@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import {
   Play, Pause, SkipBack, SkipForward, Volume2, VolumeX,
   Shuffle, Repeat, Disc3, Music2, Plus, Edit3, X, Sparkles, Upload,
-  ChevronLeft, ChevronRight, CassetteTape, Disc
+  ChevronLeft, ChevronRight, CassetteTape, Disc, Maximize2, Minimize2
 } from 'lucide-react'
 
 type MediaType = 'LP' | 'CD' | 'TAPE'
@@ -505,17 +505,38 @@ function WaveformCanvas({ isPlaying, audioData, mode }: { isPlaying: boolean; au
       for (let i = 0; i < bars; i++) {
         let amp = 0
         if (dataRef.current && isPlaying) {
-          const minBin = 1
-          const maxBin = Math.floor(dataRef.current.length * 0.85) // focus on audible area
-          const logIndex = Math.floor(minBin * Math.pow(maxBin / minBin, i / (bars - 1)))
-          const rawVal = dataRef.current[logIndex] || 0
-          // Apply logarithmic weighting boost to treble frequencies so the right side dances vigorously!
+          const sampleRate = 44100
+          const nyquist = sampleRate / 2
+          const fMin = 5
+          const fMax = 18000
+          
+          // Logarithmic frequency for this bar
+          const f = fMin * Math.pow(fMax / fMin, i / (bars - 1))
+          
+          const binCount = dataRef.current.length
+          const exactIndex = (f / nyquist) * binCount
+          
+          // Linear interpolation between adjacent frequency bins
+          const idxL = Math.floor(exactIndex)
+          const idxR = Math.min(binCount - 1, idxL + 1)
+          const ratio = exactIndex - idxL
+          const valL = dataRef.current[idxL] || 0
+          const valR = dataRef.current[idxR] || 0
+          const rawVal = valL * (1 - ratio) + valR * ratio
+
+          const ampNormalized = rawVal / 255
+          // Logarithmic compression mapping (y-axis log scaling)
+          const logAmp = Math.log10(1 + 9 * ampNormalized)
+
+          // Treble boost to keep high frequencies responsive
           const trebleBoost = 1.0 + (i / bars) * 0.55
-          amp = Math.min(1.0, (rawVal / 255) * trebleBoost)
+          amp = Math.min(1.0, logAmp * trebleBoost)
         } else if (isPlaying) {
           amp = 0.05 + Math.abs(Math.sin(i * 0.2 + t)) * 0.35
+          amp = Math.log10(1 + 9 * amp)
         } else {
           amp = 0.03 + Math.abs(Math.sin(i * 0.5)) * 0.02
+          amp = Math.log10(1 + 9 * amp)
         }
         const bH = Math.max(3, amp * H * 0.85)
         const x = (i / bars) * W
@@ -537,7 +558,7 @@ function WaveformCanvas({ isPlaying, audioData, mode }: { isPlaying: boolean; au
     return () => cancelAnimationFrame(rafRef.current)
   }, [isPlaying, mode, color])
 
-  return <canvas ref={canvasRef} style={{ width: '100%', minWidth: '0px', flex: 1, height: '95px', background: 'rgba(5, 5, 5, 0.75)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', boxShadow: 'inset 0 4px 15px rgba(0,0,0,0.85)' }} />
+  return <canvas ref={canvasRef} className="waveform-canvas" />
 }
 
 const Screw = ({ style }: { style: React.CSSProperties }) => {
@@ -1003,6 +1024,30 @@ export default function Home() {
   const [aiResponse, setAiResponse] = useState('')
   const [isAiTalking, setIsAiTalking] = useState(false)
   const [audioData, setAudioData]   = useState<Uint8Array | null>(null)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement)
+    }
+    document.addEventListener('fullscreenchange', handleFullscreenChange)
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange)
+  }, [])
+
+  const toggleFullscreen = () => {
+    const playerEl = document.querySelector('.center-player')
+    if (!playerEl) return
+    if (!document.fullscreenElement) {
+      playerEl.requestFullscreen().then(() => {
+        setIsFullscreen(true)
+      }).catch((err) => {
+        console.error("Failed to enter fullscreen:", err)
+      })
+    } else {
+      document.exitFullscreen()
+      setIsFullscreen(false)
+    }
+  }
   
   // Custom states for gradual acceleration/deceleration CD spin
   const prevPlayingRef = useRef(isPlaying)
@@ -1260,7 +1305,7 @@ export default function Home() {
 
     // Visual Analyser
     const an = ctx.createAnalyser()
-    an.fftSize = 256
+    an.fftSize = 2048
     compressor.connect(an)
     an.connect(ctx.destination)
 
@@ -2253,6 +2298,14 @@ export default function Home() {
             <Edit3 size={10} />
             <span>Edit Info</span>
           </button>
+          <button
+            onClick={toggleFullscreen}
+            style={{ marginLeft: '8px', background: 'rgba(255,255,255,0.05)', border: 'none', padding: '7px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 800, color: 'var(--accent)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+            title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
+          >
+            {isFullscreen ? <Minimize2 size={11} /> : <Maximize2 size={11} />}
+            <span>{isFullscreen ? "Exit Full" : "Full Screen"}</span>
+          </button>
         </div>
 
         {/* Hyper-realistic 3D inspired Physical Media 구동 데크 */}
@@ -2520,7 +2573,8 @@ export default function Home() {
                 const activeIdx = tracks.findIndex(x => x.id === focusedTrackId)
                 
                 // Continuous progress tracking during active drag
-                const currentProgress = activeIdx - (dragOffset / 110)
+                const dragSensitivity = isFullscreen ? 150 : 120
+                const currentProgress = activeIdx - (dragOffset / dragSensitivity)
                 const cardOffset = idx - currentProgress
                 const absOffset = Math.abs(cardOffset)
                 
@@ -2529,8 +2583,8 @@ export default function Home() {
                 let zIndex = Math.round(10 - absOffset)
                 let opacity = Math.max(0.12, 1 - absOffset * 0.28)
                 
-                const cardWidth = 42
-                const sideGap = 45
+                const cardWidth = isFullscreen ? 58 : 48
+                const sideGap = isFullscreen ? 75 : 52
                 
                 let tx = cardOffset * cardWidth
                 if (cardOffset < 0) {
@@ -2689,16 +2743,15 @@ export default function Home() {
             
             {/* Real Audio frequency bands */}
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', color: 'var(--text-dim)', fontFamily: "'Courier New', Courier, monospace", fontWeight: 700, opacity: 0.8, padding: '2px 6px 0 6px' }}>
-              <span>20Hz</span>
-              <span>60Hz</span>
-              <span>120Hz</span>
-              <span>250Hz</span>
-              <span>500Hz</span>
+              <span>5Hz</span>
+              <span>40Hz</span>
+              <span>150Hz</span>
+              <span>400Hz</span>
               <span>1kHz</span>
-              <span>2kHz</span>
-              <span>4kHz</span>
-              <span>8kHz</span>
-              <span>16kHz</span>
+              <span>2.5kHz</span>
+              <span>6kHz</span>
+              <span>12kHz</span>
+              <span>18kHz</span>
             </div>
           </div>
 

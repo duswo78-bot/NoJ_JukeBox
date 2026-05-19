@@ -56,7 +56,7 @@ body {
 /* ── 3-Panel Layout ── */
 .app-layout {
   display: grid;
-  grid-template-columns: 380px 1fr 520px;
+  grid-template-columns: 330px 1fr 440px;
   grid-template-rows: 64px 1fr;
   height: 100vh;
   width: 100vw;
@@ -66,7 +66,7 @@ body {
 }
 
 .app-layout.ai-lab-collapsed {
-  grid-template-columns: 380px 1fr 0px;
+  grid-template-columns: 330px 1fr 0px;
 }
 
 /* ── Header ── */
@@ -165,7 +165,7 @@ body {
   gap: 16px;
   overflow-y: auto;
   transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1), width 0.4s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.4s ease, padding 0.4s ease;
-  width: 520px;
+  width: 440px;
   transform: translateX(0);
   opacity: 1;
 }
@@ -173,7 +173,7 @@ body {
 .app-layout.ai-lab-collapsed .ai-lab {
   width: 0px;
   padding: 20px 0;
-  transform: translateX(520px);
+  transform: translateX(440px);
   opacity: 0;
   pointer-events: none;
   border-left-color: transparent;
@@ -187,7 +187,7 @@ body {
 .ai-lab-toggle-btn {
   position: absolute;
   top: 50%;
-  right: 520px;
+  right: 440px;
   transform: translateY(-50%) translateX(50%);
   width: 20px;
   height: 64px;
@@ -355,7 +355,7 @@ body {
 /* ──── 3D Album Cover Flow Viewport ──── */
 .slot-machine-bay {
   position: relative;
-  height: 290px;
+  height: 330px;
   width: 100%;
   overflow: hidden;
   border-radius: 14px;
@@ -384,8 +384,8 @@ body {
 /* Individual Cover Flow Card */
 .cover-card {
   position: absolute;
-  width: 125px;
-  height: 125px;
+  width: 145px;
+  height: 145px;
   border-radius: 8px;
   box-shadow: 0 15px 35px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.08);
   transform-style: preserve-3d;
@@ -458,7 +458,7 @@ body {
 .deck-chassis {
   position: relative;
   width: 100%;
-  max-width: 440px;
+  max-width: 500px;
   aspect-ratio: 3 / 2;
   display: flex;
   align-items: center;
@@ -1849,6 +1849,61 @@ input[type="range"]::-webkit-slider-thumb:active {
 
 .cabinet-nav-btn.right {
   right: 14px;
+}
+
+/* Waveform Canvas base styling */
+.waveform-canvas {
+  width: 100%;
+  min-width: 0px;
+  flex: 1;
+  height: 95px;
+  background: rgba(5, 5, 5, 0.75);
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.05);
+  box-shadow: inset 0 4px 15px rgba(0,0,0,0.85);
+  transition: height 0.4s ease;
+}
+
+/* Photorealistic Maximize / Fullscreen styling for Jukebox */
+.center-player:fullscreen {
+  padding: 40px 60px !important;
+  background: radial-gradient(circle at center, #130f0c 0%, #080504 100%) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  gap: 24px !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  border: none !important;
+  z-index: 99999 !important;
+}
+
+.center-player:fullscreen .media-viewport {
+  max-height: 520px !important;
+  min-height: 420px !important;
+  grid-template-columns: 1.15fr 1fr !important;
+  gap: 40px !important;
+}
+
+.center-player:fullscreen .deck-chassis {
+  max-width: 580px !important;
+}
+
+.center-player:fullscreen .slot-machine-bay {
+  height: 380px !important;
+}
+
+.center-player:fullscreen .cover-card {
+  width: 170px !important;
+  height: 170px !important;
+}
+
+.center-player:fullscreen .waveform-canvas {
+  height: 145px !important;
+}
+
+.center-player:fullscreen .controls-bar {
+  margin-top: 15px !important;
 }
 
 
