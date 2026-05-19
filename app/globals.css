@@ -2,55 +2,1853 @@
 @tailwind components;
 @tailwind utilities;
 
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+/* ── Theme variables ── */
 :root {
-  --background: #121212;
-  --surface: #1E1E1E;
-  --neon-pink: #FF006E;
-  --neon-cyan: #00F5FF;
-  --neon-purple: #8B5CF6;
-  --neon-orange: #FF6B35;
+  --bg: #0d0a07;
+  --panel: #14100c;
+  --panel-border: #332213;
+  --accent: #dca334;
+  --accent2: #f6c86c;
+  --text: #f6ebd6;
+  --text-dim: #99836c;
+  --knob: #b8863b;
+  --btn-active-bg: conic-gradient(from 0deg, #fff6e0 0deg, #fedb9b 25deg, #dca034 50deg, #fff6e0 90deg, #9e6d15 125deg, #fedb9b 150deg, #b88526 180deg, #dca034 210deg, #9e6d15 240deg, #fff6e0 270deg, #b88526 300deg, #fff6e0 330deg, #fff6e0 360deg);
+  --btn-active-text: #4a3204;
 }
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+[data-mode="CD"] {
+  --bg: #06090e;
+  --panel: #0a0f16;
+  --panel-border: #142844;
+  --accent: #00d2ff;
+  --accent2: #894eff;
+  --text: #eef7ff;
+  --text-dim: #5c7e9f;
+  --knob: #0099e5;
+  --btn-active-bg: conic-gradient(from 0deg, #e0faff 0deg, #9bdeff 25deg, #00b4d8 50deg, #e0faff 90deg, #0077b6 125deg, #9bdeff 150deg, #0096c7 180deg, #00b4d8 210deg, #0077b6 240deg, #e0faff 270deg, #0096c7 300deg, #e0faff 330deg, #e0faff 360deg);
+  --btn-active-text: #002244;
 }
+
+[data-mode="TAPE"] {
+  --bg: #0d0f11;
+  --panel: #14171a;
+  --panel-border: #283038;
+  --accent: #a3b8cc;
+  --accent2: #dbe4ec;
+  --text: #f0f4f8;
+  --text-dim: #7a8b99;
+  --knob: #869ab3;
+  --btn-active-bg: conic-gradient(from 0deg, #f0f4f8 0deg, #cbd5e1 25deg, #94a3b8 50deg, #f0f4f8 90deg, #475569 125deg, #cbd5e1 150deg, #64748b 180deg, #94a3b8 210deg, #475569 240deg, #f0f4f8 270deg, #64748b 300deg, #f0f4f8 330deg, #f0f4f8 360deg);
+  --btn-active-text: #1e293b;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); }
 
 body {
-  background: var(--background);
-  color: white;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-  overflow-x: hidden;
+  font-family: 'Outfit', sans-serif;
+  transition: background 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+  overflow: hidden;
 }
 
-/* Custom scrollbar */
-::-webkit-scrollbar {
+/* ── 3-Panel Layout ── */
+.app-layout {
+  display: grid;
+  grid-template-columns: 380px 1fr 520px;
+  grid-template-rows: 64px 1fr;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  position: relative;
+  transition: grid-template-columns 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.app-layout.ai-lab-collapsed {
+  grid-template-columns: 380px 1fr 0px;
+}
+
+/* ── Header ── */
+.app-header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  background: rgba(0, 0, 0, 0.7);
+  border-bottom: 1px solid var(--panel-border);
+  backdrop-filter: blur(25px);
+  z-index: 10;
+  transition: border-color 0.6s ease;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 24px;
+  font-weight: 900;
+  letter-spacing: -0.5px;
+}
+
+.logo .ai-badge {
+  font-size: 12.5px;
+  font-weight: 800;
+  color: #000;
+  background: var(--accent);
+  padding: 3px 8px;
+  border-radius: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 0 0 15px rgba(220,163,52,0.4);
+}
+
+.user-profile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(255,255,255,0.03);
+  padding: 6px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.05);
+}
+
+.user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #000;
+  font-weight: 800;
+  font-size: 15px;
+}
+
+/* ── Panels ── */
+.left-sidebar {
+  grid-column: 1;
+  grid-row: 2;
+  background: rgba(0, 0, 0, 0.45);
+  border-right: 1px solid var(--panel-border);
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  gap: 20px;
+  overflow: hidden;
+  transition: border-color 0.6s ease;
+}
+
+.center-player {
+  grid-column: 2;
+  grid-row: 2;
+  background: rgba(0, 0, 0, 0.25);
+  border-right: 1px solid var(--panel-border);
+  display: flex;
+  flex-direction: column;
+  padding: 16px 20px;
+  gap: 12px;
+  overflow: hidden;
+  transition: border-color 0.6s ease;
+}
+
+.ai-lab {
+  grid-column: 3;
+  grid-row: 2;
+  background: rgba(0, 0, 0, 0.45);
+  border-left: 1px solid var(--panel-border);
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  gap: 16px;
+  overflow-y: auto;
+  transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1), width 0.4s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.4s ease, padding 0.4s ease;
+  width: 520px;
+  transform: translateX(0);
+  opacity: 1;
+}
+
+.app-layout.ai-lab-collapsed .ai-lab {
+  width: 0px;
+  padding: 20px 0;
+  transform: translateX(520px);
+  opacity: 0;
+  pointer-events: none;
+  border-left-color: transparent;
+}
+
+.app-layout.ai-lab-collapsed .center-player {
+  border-right-color: transparent;
+}
+
+/* Floating Glassmorphic Toggle Tab */
+.ai-lab-toggle-btn {
+  position: absolute;
+  top: 50%;
+  right: 520px;
+  transform: translateY(-50%) translateX(50%);
+  width: 20px;
+  height: 64px;
+  background: rgba(20, 16, 12, 0.9);
+  border: 1px solid var(--panel-border);
+  border-right: none;
+  border-radius: 8px 0 0 8px;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 100;
+  box-shadow: -4px 0 15px rgba(0,0,0,0.6);
+  backdrop-filter: blur(15px);
+  transition: right 0.4s cubic-bezier(0.25, 1, 0.5, 1), background 0.2s, border-color 0.2s, color 0.2s;
+}
+
+.ai-lab-toggle-btn:hover {
+  background: var(--panel);
+  border-color: var(--accent);
+  color: var(--accent2);
+}
+
+.app-layout.ai-lab-collapsed .ai-lab-toggle-btn {
+  right: 0px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px 0 0 8px;
+}
+
+/* ── UI Styling Elements ── */
+.section-label {
+  font-size: 12.5px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  color: var(--accent);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  opacity: 0.9;
+}
+
+.ai-dj-search-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.ai-dj-search {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  padding-right: 36px;
+  color: var(--text);
+  font-size: 14.5px;
+  outline: none;
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+.ai-dj-search:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 12px rgba(220,163,52,0.15);
+}
+
+.playlist-item {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+  border-left: 3px solid transparent;
+  margin-bottom: 4px;
+}
+
+.playlist-item:hover {
+  background: rgba(255,255,255,0.03);
+}
+
+.playlist-item.active {
+  background: rgba(220,163,52,0.08);
+  border-left-color: var(--accent);
+}
+
+/* ── Hardware-Style Media Deck ── */
+.deck-selector {
+  display: flex;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 4px;
+  gap: 4px;
+  width: 100%;
+}
+
+.deck-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-dim);
+  font-size: 13.5px;
+  font-weight: 700;
+  transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.deck-btn.active {
+  background: linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 100%);
+  color: var(--accent);
+  box-shadow: inset 0 1px 1px rgba(255,255,255,0.1), 0 2px 8px rgba(0,0,0,0.5);
+  border: 1px solid var(--panel-border);
+}
+
+/* ── Dynamic Photo-Realistic Hybrid Viewport ── */
+.media-viewport {
+  flex: 1;
+  position: relative;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 2px solid #2b1f1a;
+  box-shadow: 0 15px 40px rgba(0,0,0,0.85), inset 0 0 60px rgba(0,0,0,0.95);
+  display: grid;
+  grid-template-columns: 1.25fr 1fr;
+  padding: 16px 20px;
+  gap: 20px;
+  align-items: center;
+  justify-content: center;
+  min-height: 340px;
+  /* Dark Wooden Studio Rack backplane for LP Vinyl mode */
+  background: 
+    radial-gradient(circle at 40% 50%, rgba(220, 163, 52, 0.1) 0%, rgba(0,0,0,0) 60%),
+    radial-gradient(circle at 80% 50%, rgba(220, 163, 52, 0.06) 0%, rgba(0,0,0,0) 50%),
+    repeating-linear-gradient(0deg, #130e0c 0px, #130e0c 3px, #1c1410 4px, #130e0c 5px),
+    linear-gradient(180deg, #1c1410 0%, #0e0a08 100%);
+  transition: all 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+[data-mode="CD"] .media-viewport {
+  border-color: #172237;
+  /* Brushed Metal / Hi-Fi Rack backplane for CD player */
+  background: 
+    radial-gradient(circle at 40% 50%, rgba(0, 229, 255, 0.1) 0%, rgba(0,0,0,0) 65%),
+    radial-gradient(circle at 80% 50%, rgba(0, 229, 255, 0.05) 0%, rgba(0,0,0,0) 50%),
+    repeating-linear-gradient(90deg, #090c10 0px, #090c10 2px, #0e131b 3px, #090c10 4px),
+    linear-gradient(180deg, #0c1117 0%, #030508 100%);
+}
+
+[data-mode="TAPE"] .media-viewport {
+  border-color: #2b1d16;
+  /* Retro Studio sound-absorption acoustic egg-foam wall texture for Cassette */
+  background: 
+    radial-gradient(circle at 40% 50%, rgba(229, 143, 26, 0.1) 0%, rgba(0,0,0,0) 60%),
+    radial-gradient(circle at 80% 50%, rgba(229, 143, 26, 0.06) 0%, rgba(0,0,0,0) 50%),
+    repeating-linear-gradient(45deg, #0f0a08 0px, #0f0a08 4px, #150f0b 5px, #0f0a08 6px),
+    linear-gradient(180deg, #16100c 0%, #080504 100%);
+}
+
+/* ──── 3D Album Cover Flow Viewport ──── */
+.slot-machine-bay {
+  position: relative;
+  height: 290px;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 14px;
+  background: rgba(4, 6, 8, 0.95);
+  border: 1.5px solid var(--panel-border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  perspective: 700px; /* Crucial for realistic 3D Cover Flow depth */
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.95), 0 10px 30px rgba(0, 0, 0, 0.6);
+}
+
+/* Horizontal 3D Cover Flow Track */
+.cover-flow-track {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform-style: preserve-3d;
+  pointer-events: none;
+}
+
+/* Individual Cover Flow Card */
+.cover-card {
+  position: absolute;
+  width: 125px;
+  height: 125px;
+  border-radius: 8px;
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  transform-style: preserve-3d;
+  cursor: pointer;
+  pointer-events: auto;
+  
+  /* Breathtaking smooth Cover Flow slide/rotate transitions */
+  transition: all 0.65s cubic-bezier(0.25, 1, 0.5, 1);
+  
+  /* Photorealistic 3D Reflection below each cover card */
+  -webkit-box-reflect: below 5px linear-gradient(transparent 50%, rgba(0, 0, 0, 0.32) 100%);
+}
+
+/* Suppress transitions entirely during active dragging so cards follow fingers in real-time */
+.slot-machine-bay.dragging .cover-card {
+  transition: none !important;
+}
+
+/* Central Active Card Bezel Glow */
+.cover-card.active {
+  box-shadow: 
+    0 18px 40px rgba(0, 229, 255, 0.22), 
+    0 0 0 2px var(--accent),
+    inset 0 0 8px rgba(255,255,255,0.1);
+}
+
+/* ──── High-Speed Mechanical Jitter/Shuffle when Jukebox is searching ──── */
+.slot-machine-bay.spinning .cover-card {
+  /* Snappy mechanical step transitions for high-speed sprocket card flips */
+  transition: all 0.22s cubic-bezier(0.25, 1, 0.5, 1);
+  /* Rapid gear-vibration micro-jitter */
+  animation: cover-jitter 0.09s linear infinite;
+}
+
+/* Motion blur effect on non-active cards during rapid spinning */
+.slot-machine-bay.spinning .cover-card:not(.active) {
+  filter: blur(1.5px) brightness(0.85);
+}
+
+@keyframes cover-jitter {
+  0%, 100% { transform: translateY(0px) rotateZ(0deg); }
+  50% { transform: translateY(-0.6px) rotateZ(-0.25deg); }
+}
+
+/* Bezel overlay representing viewport framing and lighting */
+.slot-viewport-frame {
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  pointer-events: none;
+  z-index: 5;
+  box-shadow: inset 0 0 25px rgba(0,0,0,0.85);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Digital active backplane aura behind the centered card */
+.slot-center-indicator {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 140px;
+  transform: translateX(-50%);
+  background: radial-gradient(ellipse at center, rgba(0,229,255,0.1) 0%, rgba(0,0,0,0) 70%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* 3:2 Aspect Ratio Lock Container for photoreal assets */
+.deck-chassis {
+  position: relative;
+  width: 100%;
+  max-width: 440px;
+  aspect-ratio: 3 / 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Hyper-real static images loaded as background cover */
+.photoreal-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 1;
+}
+
+/* 1) LP Vinyl Hybrid overlays (Premium solid black heavyweight vinyl pressing) */
+.lp-spindle-hub {
+  position: absolute;
+  top: 49.8%;
+  left: 39.5%;
+  transform: translate(-50%, -50%);
+  width: 59.0%;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  z-index: 2;
+  pointer-events: none;
+  overflow: hidden;
+  background: radial-gradient(circle, 
+    #151210 0%, 
+    #080605 35%, 
+    #161311 36%, 
+    #030202 55%, 
+    #120f0d 56%, 
+    #000000 100%);
+  border: 1px solid rgba(255,255,255,0.05);
+  box-shadow: 0 4px 15px rgba(0,0,0,0.6), inset 0 0 20px rgba(0,0,0,0.9);
+}
+
+.lp-spindle-hub.spinning {
+  animation: spin-vinyl 3s linear infinite;
+}
+
+/* Rotating active track album art label in the record center */
+.lp-center-label {
+  position: absolute;
+  top: 49.8%;
+  left: 39.5%;
+  transform: translate(-50%, -50%);
+  width: 18.0%;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  z-index: 3;
+  pointer-events: none;
+  overflow: hidden;
+  border: 1.5px solid #140f0b;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.6);
+}
+
+.lp-center-label.spinning {
+  animation: spin-vinyl 3s linear infinite;
+}
+
+/* Silver center spindle pin */
+.lp-spindle-pin {
+  position: absolute;
+  top: 49.8%;
+  left: 39.5%;
+  transform: translate(-50%, -50%);
+  width: 1.6%;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  background: radial-gradient(circle, #ffffff 10%, #aaaaaa 50%, #444444 100%);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  z-index: 4;
+  pointer-events: none;
+}
+
+/* Realistic shiny conic overlay reflecting high-end room lighting */
+.sheen-overlay {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    rgba(255, 255, 255, 0) 0deg,
+    rgba(255, 255, 255, 0.08) 45deg,
+    rgba(255, 255, 255, 0) 90deg,
+    rgba(255, 255, 255, 0) 180deg,
+    rgba(255, 255, 255, 0.08) 225deg,
+    rgba(255, 255, 255, 0) 270deg,
+    rgba(255, 255, 255, 0) 360deg
+  );
+  box-shadow: inset 0 0 16px rgba(0, 0, 0, 0.8);
+}
+
+/* Stylus amber target light spot */
+.stylus-target-beam {
+  position: absolute;
+  top: 22.6%;
+  left: 79.0%;
+  width: 120px;
+  height: 120px;
+  transform: translate(-60%, -20%);
+  background: radial-gradient(circle, rgba(220,163,52,0.2) 0%, rgba(220,163,52,0.06) 45%, rgba(0,0,0,0) 80%);
+  z-index: 3;
+  pointer-events: none;
+  filter: blur(4px);
+  mix-blend-mode: color-dodge;
+  animation: warm-flicker 4s infinite ease-in-out;
+}
+
+/* LP Strobe RPM visual dots blinking inside the 45 RPM top-left hole */
+.strobe-dot-blinker {
+  position: absolute;
+  top: 14.66%;
+  left: 12.89%;
+  transform: translate(-50%, -50%);
+  width: 10px;
+  height: 10px;
+  background: #ff3b30;
+  border-radius: 50%;
+  box-shadow: 0 0 10px #ff3b30, inset 0 1px 2px rgba(255,255,255,0.4);
+  z-index: 3;
+}
+.strobe-dot-blinker.active {
+  animation: strobe-flash 0.4s infinite steps(2);
+}
+
+/* ── Dynamic Hyper-Realistic Skeuomorphic Tonearm Assembly ── */
+.lp-tonearm-assembly {
+  position: absolute;
+  top: 6%;
+  left: 76%;
+  width: 80px;
+  height: 220px;
+  transform-origin: 32px 35px; /* pivot anchor point exactly centered */
+  transform: rotate(-3deg);
+  transition: transform 1.4s cubic-bezier(0.25, 1, 0.5, 1);
+  z-index: 10; /* high z-index sits above spinning records */
+  pointer-events: none;
+}
+
+.lp-tonearm-assembly.playing {
+  transform: rotate(23.5deg); /* pivots exactly onto the vinyl play track! */
+}
+
+/* Chrome pivot bracket base */
+.lp-tonearm-pivot {
+  position: absolute;
+  top: 15px;
+  left: 12px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #888888 0%, #1e1e1d 75%);
+  border: 2px solid #2d2d2c;
+  box-shadow: 
+    0 6px 12px rgba(0,0,0,0.7),
+    inset 0 1px 2px rgba(255,255,255,0.3);
+  z-index: 13;
+}
+
+/* Heavy Counterweight extending backwards */
+.lp-tonearm-counterweight {
+  position: absolute;
+  top: -8px;
+  left: 26px;
+  width: 13px;
+  height: 22px;
+  background: linear-gradient(90deg, #111111 0%, #444444 30%, #222222 70%, #111111 100%);
+  border: 1px solid #000;
+  border-radius: 2px;
+  box-shadow: 0 3px 6px rgba(0,0,0,0.6);
+  z-index: 11;
+}
+
+/* Chrome metallic tonearm shaft */
+.lp-tonearm-rod {
+  position: absolute;
+  top: 35px;
+  left: 29px;
+  width: 6px;
+  height: 140px;
+  background: linear-gradient(90deg, #d8d8d8 0%, #ffffff 25%, #9b9b9b 70%, #686868 100%);
+  box-shadow: 3px 3px 6px rgba(0,0,0,0.45);
+  border-radius: 3px;
+  z-index: 12;
+}
+
+/* Detailed headshell / cartridge unit at the end */
+.lp-tonearm-cartridge {
+  position: absolute;
+  top: 168px;
+  left: 20px;
+  width: 24px;
+  height: 42px;
+  z-index: 14;
+}
+
+/* Curved black matte cartridge casing */
+.lp-cartridge-body {
+  width: 14px;
+  height: 30px;
+  background: linear-gradient(180deg, #222222 0%, #0a0a0a 100%);
+  border-radius: 2px 2px 4px 4px;
+  border: 1px solid #000000;
+  box-shadow: 
+    inset 0 1px 1px rgba(255,255,255,0.15),
+    0 3px 5px rgba(0,0,0,0.6);
+  position: relative;
+}
+
+/* Skeuomorphic Golden stripe highlight on needle cartridge */
+.lp-cartridge-body::after {
+  content: '';
+  position: absolute;
+  bottom: 5px;
+  left: 1.5px;
+  right: 1.5px;
+  height: 3px;
+  background: #dca334;
+  box-shadow: 0 0 3px #dca334;
+}
+
+/* Curved needle fingerlift handle pin */
+.lp-cartridge-fingerlift {
+  position: absolute;
+  top: 8px;
+  right: -5px;
   width: 8px;
+  height: 2.5px;
+  background: #a8a8a8;
+  border-radius: 0 3px 3px 0;
+  box-shadow: 1px 1px 2px rgba(0,0,0,0.4);
 }
 
-::-webkit-scrollbar-track {
-  background: var(--surface);
+/* 2) CD Rainbow Conic shimmers */
+.cd-laser-reflection {
+  position: absolute;
+  top: 42.77%;
+  left: 41.28%;
+  transform: translate(-50%, -50%);
+  width: 58.0%;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    rgba(0, 210, 255, 0.08) 0deg,
+    rgba(137, 78, 255, 0.08) 60deg,
+    rgba(255, 255, 255, 0) 120deg,
+    rgba(0, 210, 255, 0.08) 180deg,
+    rgba(137, 78, 255, 0.08) 240deg,
+    rgba(255, 255, 255, 0) 300deg,
+    rgba(0, 210, 255, 0.08) 360deg
+  );
+  z-index: 2;
+  pointer-events: none;
+  mix-blend-mode: screen;
 }
 
-::-webkit-scrollbar-thumb {
-  background: var(--neon-purple);
+.cd-laser-reflection.spinning {
+  animation: spin-vinyl 1.8s linear infinite;
+}
+
+.cd-laser-blue-glow {
+  position: absolute;
+  top: 42.77%;
+  left: 41.28%;
+  transform: translate(-50%, -50%);
+  width: 12.0%;
+  aspect-ratio: 1 / 1;
+  background: radial-gradient(circle, rgba(0,210,255,0.45) 0%, rgba(0,210,255,0) 70%);
+  z-index: 3;
+  pointer-events: none;
+  mix-blend-mode: color-dodge;
+  filter: blur(2px);
+}
+
+/* CD Hardware digital level VFD screen overlayed exactly on the metal frame */
+.cd-vfd-screen {
+  position: absolute;
+  left: 21.4%;
+  top: 83.8%;
+  width: 39.5%;
+  height: 8.5%;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  color: #00e5ff;
+  z-index: 3;
+  text-shadow: 0 0 4px #00e5ff;
+  letter-spacing: 0.5px;
+  pointer-events: none;
+}
+
+/* 3) Cassette Tape backlighting and rotating sprocket gears */
+.tape-warm-light {
+  position: absolute;
+  top: 46.0%;
+  left: 50.0%;
+  transform: translate(-50%, -50%);
+  width: 44.0%;
+  height: 26.0%;
+  background: radial-gradient(ellipse at center, rgba(229,143,26,0.25) 0%, rgba(229,143,26,0.05) 60%, rgba(0,0,0,0) 100%);
+  z-index: 2;
+  pointer-events: none;
+  mix-blend-mode: color-dodge;
+  filter: blur(2px);
+}
+.tape-warm-light.active {
+  animation: electrical-hum 2.5s infinite ease-in-out;
+}
+
+/* Winding tape film reels that shrink/grow dynamically */
+.tape-film-reel {
+  position: absolute;
+  top: 50.0%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, #251a11 20%, #150f0a 80%, #0d0a07 100%);
+  z-index: 1.5;
+  pointer-events: none;
+  transition: width 0.1s linear, height 0.1s linear;
+  opacity: 0.95;
+  box-shadow: inset 0 0 5px rgba(0,0,0,0.8);
+}
+
+/* Precise mechanical sprocket gear overlays situated on top of the spindles in cassette_tape.png */
+.tape-gear-left {
+  position: absolute;
+  top: calc(52.5% - 3px);
+  left: 38.64%;
+  transform: translate(-50%, -50%);
+  width: 11.6%;
+  aspect-ratio: 1 / 1;
+  z-index: 2;
+  pointer-events: none;
+}
+.tape-gear-right {
+  position: absolute;
+  top: calc(52.5% - 3px);
+  left: 60.92%;
+  transform: translate(-50%, -50%);
+  width: 11.6%;
+  aspect-ratio: 1 / 1;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.tape-gear-left.spinning {
+  animation: spin-vinyl 4s linear infinite;
+}
+.tape-gear-right.spinning {
+  animation: spin-vinyl 4s linear infinite;
+}
+
+/* Dynamic film progress block visible behind the window */
+.tape-film-progress {
+  position: absolute;
+  top: 44.0%;
+  left: 42.0%;
+  height: 18px;
+  background: #18110b;
+  border: 1px solid rgba(229, 143, 26, 0.2);
+  z-index: 1.5;
+  border-radius: 2px;
+}
+
+/* Deck Cassette Album Sticker Label */
+.deck-tape-label {
+  position: absolute;
+  z-index: 1.1;
+  width: 84%;
+  height: 52%;
+  top: 11%;
+  left: 8%;
+  border-radius: 4px;
+  overflow: hidden;
+  pointer-events: none;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+}
+
+/* ── Pro Controls Bar (Tactile Hardware Console Plate) ── */
+.controls-bar {
+  background: linear-gradient(180deg, #181512 0%, #0f0c0a 100%);
+  border: 1.5px solid var(--panel-border);
+  border-radius: 16px;
+  padding: 14px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.85), inset 0 1px 0 rgba(255,255,255,0.06);
+}
+
+[data-mode="CD"] .controls-bar {
+  background: linear-gradient(180deg, #0d121a 0%, #05080c 100%);
+}
+
+[data-mode="TAPE"] .controls-bar {
+  background: linear-gradient(180deg, #15181b 0%, #0c0d10 100%);
+}
+
+.progress-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.progress-track {
+  flex: 1;
+  height: 8px;
+  background: #000;
+  border-radius: 4px;
+  cursor: pointer;
+  position: relative;
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.9), 0 1px 0 rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.02);
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--accent) 0%, var(--accent2) 100%);
+  box-shadow: 0 0 12px var(--accent);
+  position: relative;
+  transition: width 0.1s linear;
+}
+
+/* Concentric metal slider thumb */
+.progress-fill::after {
+  content: '';
+  position: absolute;
+  right: -6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  background: radial-gradient(circle, #ffffff 20%, #cccccc 50%, #444444 100%);
+  border-radius: 50%;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.6);
+  border: 1px solid #111;
+}
+
+.transport-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+
+/* Master play button */
+.btn-play {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fcd985 0%, #dca334 60%, #996e1a 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid #ffcc55;
+  cursor: pointer;
+  box-shadow: 0 5px 15px rgba(220,163,52,0.4), inset 0 2px 2px rgba(255,255,255,0.3);
+  transition: transform 0.2s, box-shadow 0.2s;
+  position: relative;
+}
+
+[data-mode="CD"] .btn-play {
+  background: radial-gradient(circle, #55e6ff 0%, #00a2cc 60%, #005d7f 100%);
+  border-color: #00d2ff;
+  box-shadow: 0 5px 15px rgba(0,210,255,0.4), inset 0 2px 2px rgba(255,255,255,0.3);
+}
+
+[data-mode="TAPE"] .btn-play {
+  background: radial-gradient(circle, #f0f4f8 0%, #94a3b8 60%, #475569 100%);
+  border-color: #cbd5e1;
+  box-shadow: 0 5px 15px rgba(148,163,184,0.4), inset 0 2px 2px rgba(255,255,255,0.3);
+}
+
+.btn-play:hover {
+  transform: scale(1.05);
+  filter: brightness(1.08);
+}
+
+.btn-play:active {
+  transform: scale(0.96);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.6), inset 0 2px 4px rgba(0,0,0,0.4);
+}
+
+.volume-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100px;
+}
+
+/* ── Live Karaoke Lyrics Syncer ── */
+.lyrics-scroller {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 12px;
+  height: 110px;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+}
+
+.lyrics-line {
+  font-size: 14px;
+  line-height: 2;
+  text-align: center;
+  color: var(--text-dim);
+  transition: all 0.3s ease;
+  transform: scale(0.96);
+}
+
+.lyrics-line.active {
+  color: var(--accent2);
+  font-weight: 700;
+  font-size: 16px;
+  transform: scale(1.02);
+  text-shadow: 0 0 10px rgba(246,200,108,0.25);
+}
+
+/* ── EQ Presets and Save Buttons ── */
+.preset-btn {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--panel-border);
+  color: var(--text-dim);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.preset-btn:hover, .preset-btn.active {
+  background: var(--accent);
+  color: #000;
+  font-weight: 700;
+  border-color: var(--accent);
+  box-shadow: 0 2px 8px rgba(220,163,52,0.25);
+}
+
+/* ── 10-Band EQ & RTA Spectrum Style ── */
+.eq-10band-container {
+  position: relative;
+  overflow: hidden;
+}
+
+/* RTA overlay behind EQ bands */
+.rta-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  opacity: 0.15;
+  z-index: 0;
+}
+
+.eq-col-inner {
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Dynamic Modals ── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.85);
+  backdrop-filter: blur(8px);
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-content {
+  background: #181c24;
+  border: 1.5px solid rgba(255,255,255,0.08);
+  border-radius: 16px;
+  width: 500px;
+  max-width: 90%;
+  padding: 24px;
+  box-shadow: 0 15px 45px rgba(0,0,0,0.9);
+}
+
+.modal-input {
+  width: 100%;
+  background: rgba(0,0,0,0.4);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: #fff;
+  font-size: 15px;
+  outline: none;
+  margin-bottom: 12px;
+}
+
+.modal-input:focus {
+  border-color: var(--accent);
+}
+
+/* ── Drag & Drop Uploader style ── */
+.uploader-box {
+  border: 1.5px dashed rgba(255,255,255,0.15);
+  border-radius: 10px;
+  padding: 14px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: rgba(255,255,255,0.01);
+}
+
+.uploader-box:hover {
+  border-color: var(--accent);
+  background: rgba(220,163,52,0.03);
+}
+
+/* Animations */
+@keyframes spin-vinyl {
+  from { transform: translate(-50%, -50%) rotate(0deg); }
+  to   { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+@keyframes warm-flicker {
+  0%, 100% { opacity: 0.9; filter: blur(4px); }
+  50% { opacity: 0.75; filter: blur(5px); }
+  75% { opacity: 0.85; filter: blur(4.5px); }
+}
+
+@keyframes strobe-flash {
+  0% { background: #301010; box-shadow: none; }
+  100% { background: #ff3b30; box-shadow: 0 0 12px #ff3b30, 0 0 20px #ff3b30; }
+}
+
+@keyframes electrical-hum {
+  0%, 100% { opacity: 0.8; }
+  50% { opacity: 0.65; }
+  80% { opacity: 0.75; }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.3); }
+}
+
+/* ── Virtual CD Skeuomorphic Styles ── */
+.virtual-cd {
+  position: absolute;
+  top: 42.77%;
+  left: 41.28%;
+  transform: translate(-50%, -50%);
+  width: 42.5%;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  z-index: 2;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.6);
+}
+
+.cd-body {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: radial-gradient(circle, 
+    #10151c 0%, 
+    #1f2a3a 10%, 
+    #324258 20%, 
+    #222f3f 45%, 
+    #141c25 50%, 
+    #304058 70%, 
+    #10151c 100%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 0 12px rgba(0,0,0,0.9);
+  overflow: hidden;
+}
+
+/* Iridescent holographic sheen for premium look */
+.cd-sheen {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    rgba(0, 210, 255, 0.12) 0deg,
+    rgba(137, 78, 255, 0.12) 60deg,
+    rgba(255, 255, 255, 0) 120deg,
+    rgba(0, 210, 255, 0.12) 180deg,
+    rgba(137, 78, 255, 0.12) 240deg,
+    rgba(255, 255, 255, 0) 300deg,
+    rgba(0, 210, 255, 0.12) 360deg
+  );
+  mix-blend-mode: screen;
+  pointer-events: none;
+  opacity: 0.95;
+}
+
+/* Grooves on the CD data layer */
+.cd-grooves {
+  position: absolute;
+  inset: 12%;
+  border-radius: 50%;
+  border: 1.5px solid rgba(0, 210, 255, 0.1);
+  background: transparent;
+}
+.cd-grooves::before {
+  content: '';
+  position: absolute;
+  inset: 15%;
+  border-radius: 50%;
+  border: 1px solid rgba(137, 78, 255, 0.12);
+}
+.cd-grooves::after {
+  content: '';
+  position: absolute;
+  inset: 30%;
+  border-radius: 50%;
+  border: 0.5px solid rgba(255, 255, 255, 0.08);
+}
+
+.cd-data-tracks {
+  position: absolute;
+  inset: 5%;
+  border-radius: 50%;
+  background: radial-gradient(circle, transparent 70%, rgba(255,255,255,0.03) 100%);
+  pointer-events: none;
+}
+
+/* Album cover printed on the CD center label - Expanded size for premium high-fidelity look */
+.cd-album-art {
+  position: absolute;
+  inset: 6%;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.8), inset 0 0 10px rgba(0,0,0,0.4);
+  z-index: 3;
+}
+
+/* Spindle hole in the center */
+.cd-spindle-hole {
+  position: absolute;
+  inset: 43%;
+  border-radius: 50%;
+  background: #030508;
+  border: 2.5px solid #141b25;
+  box-shadow: inset 0 2px 5px rgba(0,0,0,0.95);
+  z-index: 4;
+}
+
+/* Animations for CD */
+.cd-body.spinning {
+  animation: spin-cd-up 1.8s cubic-bezier(0.4, 0, 1, 1) 1,
+             spin-cd-fast 0.35s linear 1.8s infinite;
+}
+
+.cd-body.stopping {
+  animation: spin-cd-down 2.2s cubic-bezier(0.1, 0.8, 0.3, 1) 1 forwards;
+}
+
+.cd-body.idle {
+  transform: rotate(0deg);
+}
+
+@keyframes spin-cd-up {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(1080deg); }
+}
+
+@keyframes spin-cd-fast {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes spin-cd-down {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(720deg); }
+}
+
+/* ──── Skewomorphic Media Slot Flight Loading Animation ──── */
+@keyframes lp-flight-anim {
+  0% {
+    transform: translate(250px, 0) scale(0.2) rotate(90deg);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  85% {
+    transform: translate(-110px, 0) scale(1.1) rotate(-270deg);
+    opacity: 1.0;
+  }
+  100% {
+    transform: translate(-140px, 0) scale(1.04) rotate(-360deg);
+    opacity: 1.0;
+  }
+}
+
+@keyframes cd-flight-anim {
+  0% {
+    transform: translate(250px, 0) scale(0.2) rotate(-90deg);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  85% {
+    transform: translate(-110px, 9px) scale(0.9) rotate(540deg);
+    opacity: 1.0;
+  }
+  100% {
+    transform: translate(-136px, 9px) scale(0.85) rotate(720deg);
+    opacity: 1.0;
+  }
+}
+
+@keyframes tape-flight-anim {
+  0% {
+    transform: translate(250px, 10px) scale(0.15) rotate(-15deg);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  85% {
+    transform: translate(-110px, 0) scale(0.8) rotate(5deg);
+    opacity: 1.0;
+  }
+  100% {
+    transform: translate(-140px, 0) scale(0.65) rotate(0deg);
+    opacity: 1.0;
+  }
+}
+
+.media-flight-sleeve {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 99;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.media-flight-sleeve.lp {
+  animation: lp-flight-anim 2.8s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+.media-flight-sleeve.cd {
+  animation: cd-flight-anim 2.8s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+.media-flight-sleeve.tape {
+  animation: tape-flight-anim 2.8s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+/* Vinyl disc flyer */
+.flight-lp-record {
+  width: 250px;
+  height: 250px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #1a1613 0%, #0d0a08 30%, #15110e 31%, #020101 60%, #1c1815 61%, #000000 100%);
+  border: 1px solid rgba(255,255,255,0.06);
+  box-shadow: 0 10px 25px rgba(0,0,0,0.8), inset 0 0 15px rgba(0,0,0,0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+.flight-lp-record::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, rgba(255,255,255,0) 0deg, rgba(255,255,255,0.05) 45deg, rgba(255,255,255,0) 90deg, rgba(255,255,255,0) 180deg, rgba(255,255,255,0.05) 225deg, rgba(255,255,255,0) 270deg, rgba(255,255,255,0) 360deg);
+}
+
+.flight-lp-label {
+  width: 75px;
+  height: 75px;
+  border-radius: 50%;
+  border: 2px solid #000;
+  overflow: hidden;
+}
+.flight-lp-label img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* CD flyer */
+.flight-cd-disc {
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #0e1218 0%, #1e2838 40%, #080c10 100%);
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow: 0 10px 25px rgba(0,0,0,0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+.flight-cd-disc::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, rgba(0, 210, 255, 0.1) 0deg, rgba(137, 78, 255, 0.1) 60deg, rgba(255, 255, 255, 0) 120deg, rgba(0, 210, 255, 0.1) 180deg, rgba(137, 78, 255, 0.1) 240deg, rgba(255, 255, 255, 0) 300deg, rgba(0, 210, 255, 0.1) 360deg);
+}
+
+.flight-cd-label {
+  width: 88%;
+  height: 88%;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.08);
+  overflow: hidden;
+}
+.flight-cd-label img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Responsive Grid for real-time FFT and analog VU meters */
+.metering-console-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 14px;
+  width: 100%;
+  margin-top: 6px;
+}
+
+@media (max-width: 950px) {
+  .metering-console-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Cassette flyer - Smoked Dark Gray Translucent Casing */
+.flight-tape-cassette {
+  width: 240px;
+  height: 160px;
+  background: rgba(30, 32, 36, 0.72); /* Dark gray translucent plastic body with backdrop blur */
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  box-shadow: 
+    0 15px 35px rgba(0,0,0,0.65),
+    inset 0 1px 3px rgba(255,255,255,0.1),
+    inset 0 -2px 5px rgba(0,0,0,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Corner Slotted Screws */
+.cassette-screw {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #999 20%, #444 70%);
+  border: 0.5px solid #000;
+  box-shadow: 0 0.5px 1px rgba(255,255,255,0.1);
+  z-index: 5;
+}
+.cassette-screw.top-left { top: 6px; left: 6px; }
+.cassette-screw.top-right { top: 6px; right: 6px; }
+.cassette-screw.bottom-left { bottom: 6px; left: 6px; }
+.cassette-screw.bottom-right { bottom: 6px; right: 6px; }
+
+/* Trapezoidal shield at the bottom of the cassette */
+.cassette-bottom-shield {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 150px;
+  height: 24px;
+  background: rgba(24, 24, 24, 0.85);
+  border-top: 1.5px solid rgba(255,255,255,0.2);
+  border-left: 2px solid #0c0c0c;
+  border-right: 2px solid #0c0c0c;
+  border-radius: 4px 4px 0 0;
+  clip-path: polygon(10% 0%, 90% 0%, 100% 100%, 0% 100%); /* Perfect trapezoid shape! */
+  box-shadow: inset 0 1px 2px rgba(255,255,255,0.05);
+  z-index: 2;
+}
+
+/* Transparent center window slot for reels */
+.cassette-center-window {
+  position: absolute;
+  width: 44%;
+  height: 38%;
+  left: 28%;
+  top: 31%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  border-radius: 6px;
+  box-shadow: inset 0 1px 4px rgba(0,0,0,0.15);
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 0 15px;
+  overflow: hidden;
+  z-index: 4; /* Overlay on top of reels (4.1 is inside) but under mask */
+}
+
+
+/* Miniature reels inside window - Original photorealistic sprocket hubs wound with tape */
+.mini-reel {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 4.1; /* Placed over window insert but under label mask */
+  /* Original clean photorealistic sprocket hub core + brown magnetic tape roll gradient */
+  background: radial-gradient(circle, #ffffff 16%, #dddddd 17%, #1a1a1a 18%, #1a1a1a 24%, #47321e 25%, #2a1c10 80%, transparent 81%);
+  box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+  border: 1px solid rgba(0,0,0,0.35);
+}
+
+.mini-reel.left {
+  left: 30%; /* Widened gap between left and right reels (20% wider spool gap) */
+}
+
+.mini-reel.right {
+  left: 70%; /* Widened gap between left and right reels (20% wider spool gap) */
+}
+
+
+/* Compact Tape Label */
+.flight-tape-label {
+  position: absolute;
+  z-index: 3;
+  width: 90%;
+  height: 70%;
+  top: 10%;
+  left: 5%;
+  border: 1.5px solid rgba(0,0,0,0.3);
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.4);
+}
+.flight-tape-label img, .flight-tape-label svg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* ──── LP Integrated Twin Analog VU Meters ──── */
+.lp-integrated-vu {
+  position: absolute;
+  left: 6.5%;
+  bottom: 6%;
+  width: 25%;
+  height: 13.5%;
+  z-index: 3;
+  display: flex;
+  gap: 4px;
+  background: rgba(10, 8, 7, 0.85);
+  border: 1.5px solid #281d16;
+  border-radius: 4px;
+  padding: 2px;
+  box-shadow: inset 0 2px 5px rgba(0,0,0,0.9), 0 2px 4px rgba(0,0,0,0.4);
+}
+.integrated-vu-unit {
+  flex: 1;
+  height: 100%;
+  background: radial-gradient(circle at center bottom, rgba(220,163,52,0.1) 0%, rgba(0,0,0,0) 80%), #0c0806;
+  border: 0.5px solid rgba(255,255,255,0.03);
+  border-radius: 2px;
+}
+
+/* ──── CD Integrated Digital LED Stereo Level Meter ──── */
+.cd-integrated-led-vu {
+  position: absolute;
+  right: 13.5%;
+  top: 83.8%;
+  width: 22%;
+  height: 8.5%;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-evenly;
+  background: rgba(3, 5, 8, 0.9);
+  border: 1px solid #141c25;
+  border-radius: 3px;
+  padding: 2px 4px;
+  box-shadow: inset 0 1px 4px rgba(0,0,0,0.9);
+}
+.cd-led-row {
+  display: flex;
+  gap: 1.5px;
+  width: 100%;
+  height: 3px;
+}
+.cd-led-segment {
+  flex: 1;
+  height: 100%;
+  border-radius: 0.5px;
+  transition: background-color 0.05s ease;
+}
+
+/* ──── Tape Integrated Amber-Backlit VU Meters ──── */
+.tape-integrated-vu {
+  position: absolute;
+  left: 28%;
+  top: 13%;
+  width: 44%;
+  height: 18.5%;
+  z-index: 3;
+  display: flex;
+  gap: 8px;
+  background: rgba(12, 8, 5, 0.92);
+  border: 2px solid #1c130d;
+  border-radius: 4px;
+  padding: 3px;
+  box-shadow: inset 0 2px 6px rgba(0,0,0,0.95), 0 3px 6px rgba(0,0,0,0.5);
+}
+.tape-vu-unit {
+  flex: 1;
+  height: 100%;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+/* ──── Jukebox Physical Solenoid Platter/Chassis Shudder Impact ──── */
+@keyframes deck-impact-anim {
+  0% { transform: scale(1) translate(0, 0) rotate(0deg); }
+  15% { transform: scale(0.96) translate(3px, 4px) rotate(0.5deg); filter: brightness(1.12); }
+  35% { transform: scale(1.03) translate(-4px, -2px) rotate(-0.6deg); }
+  55% { transform: scale(0.98) translate(2px, 2px) rotate(0.3deg); }
+  75% { transform: scale(1.01) translate(-1px, -1px) rotate(-0.1deg); }
+  90% { transform: scale(1) translate(0, 0) rotate(0deg); }
+  100% { transform: scale(1) translate(0, 0) rotate(0deg); }
+}
+
+.deck-impact {
+  animation: deck-impact-anim 0.45s cubic-bezier(0.25, 0.8, 0.25, 1) forwards;
+}
+
+/* Custom premium translucent scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.01);
   border-radius: 4px;
 }
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--neon-pink);
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+  border-color: rgba(255, 255, 255, 0.15);
 }
 
-/* Neon glow effects */
-.neon-glow {
-  box-shadow: 0 0 10px var(--neon-cyan), 0 0 20px var(--neon-cyan), 0 0 30px var(--neon-cyan);
+/* ──── Brushed Aluminum Range Sliders ──── */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  outline: none;
+  height: 5px;
+  transition: background 0.2s;
 }
 
-.neon-glow-pink {
-  box-shadow: 0 0 10px var(--neon-pink), 0 0 20px var(--neon-pink), 0 0 30px var(--neon-pink);
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  /* Exact high-fidelity conic brushed aluminum sheen from uploaded image */
+  background: conic-gradient(from 0deg, #f2f2f2 0deg, #c5c5c5 25deg, #a3a3a3 50deg, #e8e8e8 90deg, #999999 125deg, #fcfcfc 150deg, #7a7a7a 180deg, #c0c0c0 210deg, #8f8f8f 240deg, #e5e5e5 270deg, #b0b0b0 300deg, #ffffff 330deg, #f2f2f2 360deg);
+  border: 1px solid rgba(0, 0, 0, 0.35);
+  box-shadow: 
+    0 2.5px 5px rgba(0,0,0,0.5), 
+    inset 0 1px 1px rgba(255,255,255,0.8),
+    inset 0 -1px 1px rgba(0,0,0,0.25);
+  cursor: pointer;
+  transition: transform 0.1s, border-color 0.2s;
 }
 
-.neon-text {
-  text-shadow: 0 0 10px var(--neon-cyan), 0 0 20px var(--neon-cyan);
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.22);
+  border-color: rgba(0, 0, 0, 0.45);
 }
+
+input[type="range"]::-webkit-slider-thumb:active {
+  transform: scale(0.95);
+  filter: brightness(0.92) contrast(1.05);
+}
+
+/* ──── Brushed Aluminum Circular Player Buttons ──── */
+.btn-transport {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  /* Lighter, high-contrast brushed finish for better visibility against dark panel */
+  background: conic-gradient(from 0deg, #ffffff 0deg, #e6e6e6 25deg, #cfcfcf 50deg, #f8f8f8 90deg, #bcbcbc 125deg, #ffffff 150deg, #a5a5a5 180deg, #e0e0e0 210deg, #b8b8b8 240deg, #fafafa 270deg, #d3d3d3 300deg, #ffffff 330deg, #ffffff 360deg);
+  border: 1.2px solid rgba(0,0,0,0.45);
+  color: #111111 !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 
+    0 4px 10px rgba(0,0,0,0.65), 
+    inset 0 1.5px 2px rgba(255,255,255,1),
+    inset 0 -1.5px 2px rgba(0,0,0,0.25);
+  transition: transform 0.1s, box-shadow 0.1s, border-color 0.2s, background 0.2s;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.btn-transport svg {
+  color: #000000 !important;
+  stroke-width: 2.8px;
+  filter: drop-shadow(0 1px 0.5px rgba(255,255,255,0.9));
+}
+
+.btn-transport:hover {
+  transform: scale(1.08) rotate(4deg);
+  border-color: rgba(0,0,0,0.6);
+}
+
+.btn-transport:active {
+  transform: scale(0.95) translateY(1px);
+  filter: brightness(0.92) contrast(1.05);
+  box-shadow: 
+    0 1px 2px rgba(0,0,0,0.3), 
+    inset 0 1.5px 2px rgba(0,0,0,0.5);
+}
+
+/* Dynamic brushed finish active state for Toggle buttons (Shuffle/Repeat) based on active mode variables */
+.btn-transport[style*="color: var(--accent)"],
+.btn-transport[style*="color: rgb(220, 163, 52)"],
+.btn-transport[style*="color: rgb(0, 210, 255)"],
+.btn-transport[style*="color: rgb(163, 184, 204)"] {
+  background: var(--btn-active-bg) !important;
+  border-color: rgba(0,0,0,0.45) !important;
+  box-shadow: 
+    0 4px 10px rgba(0,0,0,0.65), 
+    inset 0 1.5px 2px rgba(255,255,255,1),
+    inset 0 -1.5px 2px rgba(0,0,0,0.25);
+}
+.btn-transport[style*="color: var(--accent)"] svg,
+.btn-transport[style*="color: rgb(220, 163, 52)"] svg,
+.btn-transport[style*="color: rgb(0, 210, 255)"] svg,
+.btn-transport[style*="color: rgb(163, 184, 204)"] svg {
+  color: var(--btn-active-text) !important;
+}
+
+.btn-play {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, #ffffff 0deg, #cbcbcb 25deg, #ababab 50deg, #f8f8f8 90deg, #a5a5a5 125deg, #ffffff 150deg, #828282 180deg, #d3d3d3 210deg, #969696 240deg, #f0f0f0 270deg, #b8b8b8 300deg, #ffffff 330deg, #ffffff 360deg);
+  border: 1.8px solid rgba(0,0,0,0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 
+    0 4px 10px rgba(0,0,0,0.5), 
+    inset 0 1px 2px rgba(255,255,255,0.9),
+    inset 0 -2px 2px rgba(0,0,0,0.3);
+  transition: transform 0.1s, box-shadow 0.1s, border-color 0.2s, background 0.2s;
+  flex-shrink: 0;
+}
+
+.btn-play svg {
+  color: #1a1a1a !important;
+  stroke-width: 2.5px;
+}
+
+.btn-play:hover {
+  transform: scale(1.06) rotate(-2deg);
+  border-color: rgba(0,0,0,0.45);
+}
+
+.btn-play:active {
+  transform: scale(0.95) translateY(1.5px);
+  filter: brightness(0.92) contrast(1.05);
+  box-shadow: 
+    0 1.5px 4px rgba(0,0,0,0.4), 
+    inset 0 2px 3px rgba(0,0,0,0.6);
+}
+
+/* Upgraded High-End Media Selector Deck styling overrides */
+.deck-btn {
+  padding: 10px 18px !important;
+  font-size: 13.5px !important;
+  font-weight: 800 !important;
+  border-radius: 10px !important;
+  gap: 10px !important;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  background: rgba(255, 255, 255, 0.01) !important;
+  border: 1px solid transparent !important;
+  box-shadow: none !important;
+}
+
+.deck-btn:hover {
+  background: rgba(255, 255, 255, 0.03) !important;
+  color: var(--text) !important;
+}
+
+.deck-btn.active {
+  background: linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 100%) !important;
+  color: var(--accent) !important;
+  border: 1.5px solid var(--panel-border) !important;
+  box-shadow: 
+    inset 0 1px 1px rgba(255,255,255,0.1),
+    0 4px 12px rgba(0,0,0,0.6) !important;
+  text-shadow: 0 0 6px rgba(220, 163, 52, 0.3);
+}
+
+/* Cabinet Nav Buttons */
+.cabinet-nav-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(20, 16, 12, 0.8);
+  border: 1.5px solid var(--panel-border);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 20;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+  transition: all 0.25s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.cabinet-nav-btn:hover {
+  background: var(--panel);
+  border-color: var(--accent);
+  color: var(--accent2);
+  box-shadow: 0 0 12px rgba(220,163,52,0.5);
+  transform: translateY(-50%) scale(1.1);
+}
+
+.cabinet-nav-btn:active {
+  transform: translateY(-50%) scale(0.92);
+  filter: brightness(0.85);
+}
+
+.cabinet-nav-btn.left {
+  left: 14px;
+}
+
+.cabinet-nav-btn.right {
+  right: 14px;
+}
+
+
