@@ -4,7 +4,8 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import {
   Play, Pause, SkipBack, SkipForward, Volume2, VolumeX,
   Shuffle, Repeat, Disc3, Music2, Plus, Edit3, X, Sparkles, Upload,
-  ChevronLeft, ChevronRight, CassetteTape, Disc, Maximize2, Minimize2
+  ChevronLeft, ChevronRight, CassetteTape, Disc, Maximize2, Minimize2,
+  Rewind, FastForward, RefreshCw, Trash2
 } from 'lucide-react'
 
 type MediaType = 'LP' | 'CD' | 'TAPE'
@@ -21,7 +22,6 @@ function parseMp3Metadata(file: File): Promise<{ title?: string; artist?: string
       }
       
       const view = new DataView(buffer);
-      // Check if it starts with "ID3"
       if (buffer.byteLength < 10 || 
           view.getUint8(0) !== 0x49 || 
           view.getUint8(1) !== 0x44 || 
@@ -32,11 +32,12 @@ function parseMp3Metadata(file: File): Promise<{ title?: string; artist?: string
       
       const versionMajor = view.getUint8(3);
       const totalSize = readSyncsafeInteger(view, 6);
-      let offset = 10; // ID3v2 Header size
+      let offset = 10;
       
       let title: string | undefined;
       let artist: string | undefined;
       let coverUrl: string | undefined;
+      let coverBlob: Blob | undefined;
       
       const textDecoder = new TextDecoder('utf-8');
       const utf16Decoder = new TextDecoder('utf-16');
@@ -56,13 +57,11 @@ function parseMp3Metadata(file: File): Promise<{ title?: string; artist?: string
           
           let frameSize = 0;
           if (versionMajor === 3) {
-            // ID3v2.3 uses standard 32-bit big-endian integer for frame size
             frameSize = (view.getUint8(offset + 4) << 24) |
                         (view.getUint8(offset + 5) << 16) |
                         (view.getUint8(offset + 6) << 8) |
                         view.getUint8(offset + 7);
           } else {
-            // ID3v2.4 uses syncsafe 32-bit integer
             frameSize = readSyncsafeInteger(view, offset + 4);
           }
           
@@ -72,11 +71,11 @@ function parseMp3Metadata(file: File): Promise<{ title?: string; artist?: string
           
           const frameDataOffset = offset + 10;
           
-          if (frameId === 'TIT2') { // Title
+          if (frameId === 'TIT2') {
             title = decodeTextFrame(view, frameDataOffset, frameSize, textDecoder, utf16Decoder);
-          } else if (frameId === 'TPE1') { // Artist
+          } else if (frameId === 'TPE1') {
             artist = decodeTextFrame(view, frameDataOffset, frameSize, textDecoder, utf16Decoder);
-          } else if (frameId === 'APIC') { // Picture / Attached Cover Art
+          } else if (frameId === 'APIC') {
             try {
               const encoding = view.getUint8(frameDataOffset);
               let mimeTypeOffset = frameDataOffset + 1;
@@ -88,13 +87,11 @@ function parseMp3Metadata(file: File): Promise<{ title?: string; artist?: string
               const pictureType = view.getUint8(mimeTypeOffset + 1);
               let descOffset = mimeTypeOffset + 2;
               if (encoding === 1 || encoding === 2) {
-                // UTF-16, skip until 0x00 0x00
                 while (descOffset < buffer.byteLength - 1 && view.getUint16(descOffset) !== 0) {
                   descOffset += 2;
                 }
                 descOffset += 2;
               } else {
-                // UTF-8 or ISO-8859-1, skip until 0x00
                 while (descOffset < buffer.byteLength && view.getUint8(descOffset) !== 0) {
                   descOffset++;
                 }
@@ -105,6 +102,7 @@ function parseMp3Metadata(file: File): Promise<{ title?: string; artist?: string
               if (imgDataSize > 0 && descOffset + imgDataSize <= buffer.byteLength) {
                 const imgData = new Uint8Array(buffer, descOffset, imgDataSize);
                 const blob = new Blob([imgData], { type: mimeType || 'image/jpeg' });
+                coverBlob = blob;
                 coverUrl = URL.createObjectURL(blob);
               }
             } catch (err) {
@@ -169,6 +167,7 @@ function parseMp3Metadata(file: File): Promise<{ title?: string; artist?: string
                 const imgData = new Uint8Array(buffer, descOffset, imgDataSize);
                 const mimeType = format === 'png' ? 'image/png' : 'image/jpeg';
                 const blob = new Blob([imgData], { type: mimeType });
+                coverBlob = blob;
                 coverUrl = URL.createObjectURL(blob);
               }
             } catch (err) {
@@ -180,7 +179,7 @@ function parseMp3Metadata(file: File): Promise<{ title?: string; artist?: string
         }
       }
       
-      resolve({ title, artist, coverUrl });
+      resolve({ title, artist, coverUrl, coverBlob });
     };
     
     reader.onerror = () => resolve({});
@@ -356,7 +355,7 @@ function VUMeter({ level, label, mode }: { level: number; label: string; mode: M
   const angle = -40 + level * 80 // -40deg to +40deg
   
   // Color theme based on mode
-  const glowColor = mode === 'CD' ? 'rgba(0, 210, 255, 0.22)' : mode === 'TAPE' ? 'rgba(229, 143, 26, 0.22)' : 'rgba(220, 163, 52, 0.22)';
+  const glowColor = mode === 'CD' ? 'rgba(210, 228, 255, 0.22)' : mode === 'TAPE' ? 'rgba(255, 252, 248, 0.22)' : 'rgba(220, 163, 52, 0.22)';
   
   return (
     <div className="vu-meter-hardware" style={{
@@ -487,11 +486,32 @@ function WaveformCanvas({ isPlaying, audioData, mode }: { isPlaying: boolean; au
   const colorTAPE = '#cbd5e1'
   const color = mode === 'CD' ? colorCD : mode === 'TAPE' ? colorTAPE : colorLP
 
+  // Dynamically track and update canvas width/height when entering/exiting fullscreen
+  // (solves offsetWidth = 0 bug when the metering console is hidden with display: none)
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
-    canvas.width  = canvas.offsetWidth  * window.devicePixelRatio
-    canvas.height = canvas.offsetHeight * window.devicePixelRatio
+
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const width = entry.contentRect.width || canvas.offsetWidth
+        const height = entry.contentRect.height || canvas.offsetHeight
+        
+        if (width > 0 && height > 0) {
+          const dpr = window.devicePixelRatio || 1
+          canvas.width = width * dpr
+          canvas.height = height * dpr
+        }
+      }
+    })
+
+    resizeObserver.observe(canvas)
+    return () => resizeObserver.disconnect()
+  }, [])
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
 
     let t = 0
     const draw = () => {
@@ -501,7 +521,37 @@ function WaveformCanvas({ isPlaying, audioData, mode }: { isPlaying: boolean; au
       ctx.clearRect(0, 0, W, H)
       t += 0.05
 
-      const bars = 50
+      const dpr = window.devicePixelRatio || 1
+      const labelAreaWidth = 42 * dpr
+
+      // ── DRAW Y-AXIS GRID LINES & LOG NUMERIC LABELS ──
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)'
+      ctx.lineWidth = 1 * dpr
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.7)'
+      ctx.font = `bold ${10 * dpr}px 'JetBrains Mono', monospace`
+      ctx.textAlign = 'right'
+
+      const dbValues = [0, -20, -40, -60, -80]
+      dbValues.forEach(db => {
+        // Map db (0 to -80) to y-coordinate (top to bottom)
+        const y = ((db - 0) / -80) * (H - 12 * dpr) + 6 * dpr
+        
+        // Draw horizontal grid line
+        ctx.beginPath()
+        ctx.moveTo(labelAreaWidth, y)
+        ctx.lineTo(W, y)
+        ctx.stroke()
+        
+        // Draw numeric value
+        ctx.fillText(`${db}dB`, labelAreaWidth - 6 * dpr, y + 4.5 * dpr)
+      })
+
+      // ── PLOT FREQUENCY BARS IN LOGARITHMIC DECIBEL SCALE ──
+      const bars = 45
+      const barsStart = labelAreaWidth + 2 * dpr
+      const barsWidth = W - barsStart - 4 * dpr
+      const bW = (barsWidth / bars) - (2 * dpr)
+
       for (let i = 0; i < bars; i++) {
         let amp = 0
         if (dataRef.current && isPlaying) {
@@ -523,33 +573,37 @@ function WaveformCanvas({ isPlaying, audioData, mode }: { isPlaying: boolean; au
           const valL = dataRef.current[idxL] || 0
           const valR = dataRef.current[idxR] || 0
           const rawVal = valL * (1 - ratio) + valR * ratio
-
+          
+          // Web Audio API's getByteFrequencyData returns values already mapped logarithmically in decibels.
+          // Therefore, rawVal / 255 is already linear in decibels, which represents the log scale height!
           const ampNormalized = rawVal / 255
-          // Logarithmic compression mapping (y-axis log scaling)
-          const logAmp = Math.log10(1 + 9 * ampNormalized)
-
-          // Treble boost to keep high frequencies responsive
-          const trebleBoost = 1.0 + (i / bars) * 0.55
-          amp = Math.min(1.0, logAmp * trebleBoost)
+          const trebleBoost = 1.0 + (i / bars) * 0.35
+          amp = Math.max(0, Math.min(0.85, ampNormalized * trebleBoost))
         } else if (isPlaying) {
-          amp = 0.05 + Math.abs(Math.sin(i * 0.2 + t)) * 0.35
-          amp = Math.log10(1 + 9 * amp)
+          // Simulation when hardware audio not connected
+          const simulatedAmp = 0.05 + Math.abs(Math.sin(i * 0.2 + t)) * 0.70
+          amp = Math.max(0, Math.min(0.85, simulatedAmp))
         } else {
-          amp = 0.03 + Math.abs(Math.sin(i * 0.5)) * 0.02
-          amp = Math.log10(1 + 9 * amp)
+          // Idle ambient simulation
+          const simulatedAmp = 0.01 + Math.abs(Math.sin(i * 0.5)) * 0.04
+          amp = Math.max(0, Math.min(0.85, simulatedAmp))
         }
-        const bH = Math.max(3, amp * H * 0.85)
-        const x = (i / bars) * W
-        const bW = (W / bars) - 2
 
-        const grad = ctx.createLinearGradient(0, H - bH, 0, H)
+        // Draw frequency bar
+        const maxBarH = H - 12 * dpr
+        const bH = Math.max(3 * dpr, amp * maxBarH) // Headroom capped at 85% to prevent y-axis overflow
+        const x = barsStart + (i / bars) * barsWidth
+        const y = H - 6 * dpr - bH
+
+        const grad = ctx.createLinearGradient(0, y, 0, y + bH)
         grad.addColorStop(0, color)
-        grad.addColorStop(0.5, `${color}bb`)
-        grad.addColorStop(1, `${color}18`)
+        grad.addColorStop(0.5, `${color}cc`)
+        grad.addColorStop(1, `${color}44`)
         ctx.fillStyle = grad
+
         ctx.beginPath()
-        if (ctx.roundRect) ctx.roundRect(x, H - bH, bW, bH, 3)
-        else ctx.rect(x, H - bH, bW, bH)
+        if (ctx.roundRect) ctx.roundRect(x, y, bW, bH, 2 * dpr)
+        else ctx.rect(x, y, bW, bH)
         ctx.fill()
       }
       rafRef.current = requestAnimationFrame(draw)
@@ -590,7 +644,7 @@ const Screw = ({ style }: { style: React.CSSProperties }) => {
   )
 }
 
-function StereoVUMeters({ isPlaying, audioData, onToggleLight }: { isPlaying: boolean; audioData: Uint8Array | null; onToggleLight?: () => void }) {
+function StereoVUMeters({ isPlaying, audioData, onToggleLight, mode }: { isPlaying: boolean; audioData: Uint8Array | null; onToggleLight?: () => void; mode?: MediaType }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const rafRef = useRef<number>(0)
   const dataRef = useRef<Uint8Array | null>(null)
@@ -601,6 +655,11 @@ function StereoVUMeters({ isPlaying, audioData, onToggleLight }: { isPlaying: bo
   useEffect(() => {
     lightOnRef.current = lightOn
   }, [lightOn])
+
+  const modeRef = useRef(mode)
+  useEffect(() => {
+    modeRef.current = mode
+  }, [mode])
 
   // Physics states for Left and Right needles (current position and velocity)
   const leftLevel = useRef<number>(0)
@@ -636,6 +695,18 @@ function StereoVUMeters({ isPlaying, audioData, onToggleLight }: { isPlaying: bo
 
       const currentLightOn = lightOnRef.current
 
+      // Lamp color palette per media mode
+      const m = modeRef.current
+      const lampFace0   = m === 'CD' ? '#f5f9ff' : m === 'TAPE' ? '#fffef9' : '#fffcf5'
+      const lampFace1   = m === 'CD' ? '#dae9ff' : m === 'TAPE' ? '#fdf9f0' : '#fde69d'
+      const lampFace2   = m === 'CD' ? '#adc8f0' : m === 'TAPE' ? '#f5ede0' : '#f7cd6a'
+      const lampFace3   = m === 'CD' ? '#6090c8' : m === 'TAPE' ? '#c8b8a0' : '#ab7c24'
+      const lampBeamA   = m === 'CD' ? 'rgba(200,220,255,0.42)'  : m === 'TAPE' ? 'rgba(255,252,240,0.42)'  : 'rgba(253,230,138,0.42)'
+      const lampBeamB   = m === 'CD' ? 'rgba(200,220,255,0.15)'  : m === 'TAPE' ? 'rgba(255,252,240,0.15)'  : 'rgba(253,230,138,0.15)'
+      const lampRadialA = m === 'CD' ? 'rgba(220,235,255,0.50)'  : m === 'TAPE' ? 'rgba(255,255,248,0.50)'  : 'rgba(255,236,179,0.50)'
+      const lampRadialB = m === 'CD' ? 'rgba(220,235,255,0.22)'  : m === 'TAPE' ? 'rgba(255,255,248,0.22)'  : 'rgba(255,236,179,0.22)'
+      const lampRadialC = m === 'CD' ? 'rgba(220,235,255,0.05)'  : m === 'TAPE' ? 'rgba(255,255,248,0.05)'  : 'rgba(255,236,179,0.05)'
+
       // 1. Determine target levels for needles based on stereo FFT buckets
       let targetLeft = 0
       let targetRight = 0
@@ -670,19 +741,19 @@ function StereoVUMeters({ isPlaying, audioData, onToggleLight }: { isPlaying: bo
           const curveL = Math.pow(avgL, 0.78)
           const curveR = Math.pow(avgR, 0.78)
           
-          targetLeft = Math.min(1.02, curveL * 1.48 * modL)
-          targetRight = Math.min(1.02, curveR * 1.48 * modR)
+          targetLeft = 0.08 + Math.pow(avgL, 0.65) * 0.90 * modL
+          targetRight = 0.08 + Math.pow(avgR, 0.65) * 0.90 * modR
           
-          if (targetLeft > 0.02) targetLeft = 0.02 + targetLeft * 0.98
-          if (targetRight > 0.02) targetRight = 0.02 + targetRight * 0.98
+          targetLeft = Math.min(1.05, targetLeft)
+          targetRight = Math.min(1.05, targetRight)
         } else {
           const t = Date.now() * 0.006
-          targetLeft = 0.3 + Math.abs(Math.sin(t) * Math.cos(t * 0.5)) * 0.55
-          targetRight = 0.25 + Math.abs(Math.cos(t * 0.8) * Math.sin(t * 0.3)) * 0.6
+          targetLeft = 0.10 + Math.abs(Math.sin(t) * Math.cos(t * 0.5)) * 0.85
+          targetRight = 0.10 + Math.abs(Math.cos(t * 0.8) * Math.sin(t * 0.3)) * 0.85
         }
       } else {
-        targetLeft = 0.015 + Math.sin(Date.now() * 0.005) * 0.005
-        targetRight = 0.015 + Math.cos(Date.now() * 0.005) * 0.005
+        targetLeft = 0.05 + Math.sin(Date.now() * 0.005) * 0.01
+        targetRight = 0.05 + Math.cos(Date.now() * 0.005) * 0.01
       }
 
       // 2. Heavy-duty physical mechanical inertia system
@@ -700,37 +771,56 @@ function StereoVUMeters({ isPlaying, audioData, onToggleLight }: { isPlaying: bo
       rightLevel.current = Math.max(0, Math.min(1.1, rightLevel.current))
 
       // 3. Draw Dual VU meter windows
-      const padding = 16
-      const gap = 52
+      const padding = 18
+      const gap = 42
       const meterW = (W - padding * 2 - gap) / 2
 
       const drawSingleMeter = (xStart: number, width: number, currentVal: number, label: string) => {
         // Define centered bounding box for the recessed meter window
-        const meterH = H * 0.80
+        const meterH = H * 0.76
         const yStart = (H - meterH) / 2
-        const rx = xStart + 4
+        const rx = xStart + 2
         const ry = yStart
-        const rw = width - 8
+        const rw = width - 4
         const rh = meterH
 
         const radius = rh * 0.86
         const cx = rx + rw / 2
         const cy = ry + rh - 6
+        const startAngle = Math.PI * (13 / 12)
+        const endAngle = Math.PI * (23 / 12)
 
-        // Draw recessed bevel/border around the window
+        // Bezel Outer Border Gradient (Chrome & Vintage Gold blend)
         const rimGrad = ctx.createLinearGradient(rx, ry, rx + rw, ry + rh)
-        rimGrad.addColorStop(0, '#5a493a')
-        rimGrad.addColorStop(0.3, '#ebd48a')
-        rimGrad.addColorStop(0.5, '#2e241c')
-        rimGrad.addColorStop(0.7, '#ebd48a')
-        rimGrad.addColorStop(1, '#221912')
+        if (currentLightOn) {
+          rimGrad.addColorStop(0, '#cbd5e1')   // Chrome bright highlight
+          rimGrad.addColorStop(0.25, '#dca334') // Warm gold sheen
+          rimGrad.addColorStop(0.5, '#475569') // Dark steel shadow
+          rimGrad.addColorStop(0.75, '#ebd48a') // Warm gold sheen
+          rimGrad.addColorStop(1, '#1e293b')   // Deep steel backing
+        } else {
+          rimGrad.addColorStop(0, '#475569')
+          rimGrad.addColorStop(0.5, '#1e293b')
+          rimGrad.addColorStop(1, '#0f172a')
+        }
         ctx.strokeStyle = rimGrad
-        ctx.lineWidth = 2.0
+        ctx.lineWidth = 3.0
         ctx.beginPath()
         if (ctx.roundRect) {
-          ctx.roundRect(rx, ry, rw, rh, 6)
+          ctx.roundRect(rx, ry, rw, rh, 8)
         } else {
           ctx.rect(rx, ry, rw, rh)
+        }
+        ctx.stroke()
+
+        // Bezel Inner Dark Groove Ring
+        ctx.strokeStyle = currentLightOn ? 'rgba(0, 0, 0, 0.65)' : 'rgba(0, 0, 0, 0.95)'
+        ctx.lineWidth = 1.0
+        ctx.beginPath()
+        if (ctx.roundRect) {
+          ctx.roundRect(rx + 1.5, ry + 1.5, rw - 3, rh - 3, 6.5)
+        } else {
+          ctx.rect(rx + 1.5, ry + 1.5, rw - 3, rh - 3)
         }
         ctx.stroke()
 
@@ -738,41 +828,73 @@ function StereoVUMeters({ isPlaying, audioData, onToggleLight }: { isPlaying: bo
         ctx.save()
         ctx.beginPath()
         if (ctx.roundRect) {
-          ctx.roundRect(rx, ry, rw, rh, 6)
+          ctx.roundRect(rx + 2, ry + 2, rw - 4, rh - 4, 6)
         } else {
-          ctx.rect(rx, ry, rw, rh)
+          ctx.rect(rx + 2, ry + 2, rw - 4, rh - 4)
         }
         ctx.clip()
 
-        // Radial gradient backing for dial face
-        const faceGrad = ctx.createRadialGradient(cx, cy, 5, cx, cy, radius * 1.1)
+        // Radial gradient backing for dial face (Warm glowing paper)
+        const faceGrad = ctx.createRadialGradient(cx, ry, 5, cx, ry + rh / 2, radius * 1.1)
         if (currentLightOn) {
-          faceGrad.addColorStop(0, '#fef9e7')   // Warm soft glow center
-          faceGrad.addColorStop(0.7, '#fadc80') // Vintage incandescent amber
-          faceGrad.addColorStop(1, '#c2901a')   // Rich bronze edge shadow
+          faceGrad.addColorStop(0,    lampFace0)
+          faceGrad.addColorStop(0.5,  lampFace1)
+          faceGrad.addColorStop(0.85, lampFace2)
+          faceGrad.addColorStop(1,    lampFace3)
         } else {
-          faceGrad.addColorStop(0, '#36302b')   // Dark unlit warm charcoal
-          faceGrad.addColorStop(0.7, '#241f1b') // Coffee brown
-          faceGrad.addColorStop(1, '#14110f')   // Deep shadow edge
+          faceGrad.addColorStop(0, '#2c2520')
+          faceGrad.addColorStop(0.8, '#1b1613')
+          faceGrad.addColorStop(1, '#0e0b09')
         }
         ctx.fillStyle = faceGrad
         ctx.fill()
 
+        // Warm fan-shaped backlight beam spreading out from the pivot (cx, cy) upwards
+        if (currentLightOn) {
+          ctx.save()
+          const conicGrad = ctx.createConicGradient(Math.PI * 1.5, cx, cy)
+          conicGrad.addColorStop(0,    lampBeamA)
+          conicGrad.addColorStop(0.12, lampBeamB)
+          conicGrad.addColorStop(0.24, 'rgba(0,0,0,0)')
+          conicGrad.addColorStop(0.76, 'rgba(0,0,0,0)')
+          conicGrad.addColorStop(0.88, lampBeamB)
+          conicGrad.addColorStop(1,    lampBeamA)
+          
+          ctx.fillStyle = conicGrad
+          ctx.beginPath()
+          ctx.moveTo(cx, cy)
+          ctx.arc(cx, cy, radius * 1.02, startAngle, endAngle)
+          ctx.closePath()
+          ctx.fill()
+          
+          // Subtle radial overlay centered at pivot (cx, cy) to fade the beam as it goes up
+          const radialBeam = ctx.createRadialGradient(cx, cy, 2, cx, cy, radius * 0.95)
+          radialBeam.addColorStop(0,   lampRadialA)
+          radialBeam.addColorStop(0.2, lampRadialB)
+          radialBeam.addColorStop(0.7, lampRadialC)
+          radialBeam.addColorStop(1,   'rgba(0,0,0,0)')
+          
+          ctx.fillStyle = radialBeam
+          ctx.beginPath()
+          ctx.moveTo(cx, cy)
+          ctx.arc(cx, cy, radius * 1.02, startAngle, endAngle)
+          ctx.closePath()
+          ctx.fill()
+          ctx.restore()
+        }
+
         // Recessed inner shadow stroke
-        ctx.strokeStyle = currentLightOn ? 'rgba(0,0,0,0.25)' : 'rgba(0,0,0,0.6)'
+        ctx.strokeStyle = currentLightOn ? 'rgba(0,0,0,0.15)' : 'rgba(0,0,0,0.5)'
         ctx.lineWidth = 1.5
         ctx.beginPath()
-        ctx.arc(cx, cy, radius * 1.05, Math.PI * 1.2, Math.PI * 1.8)
+        ctx.arc(cx, cy, radius * 1.05, startAngle, endAngle)
         ctx.stroke()
-
         ctx.save()
         ctx.translate(cx, cy)
 
-        const startAngle = Math.PI * 1.22
-        const endAngle = Math.PI * 1.78
         const divisions = 20
 
-        ctx.font = `bold ${Math.max(7.5, radius * 0.11)}px 'JetBrains Mono', monospace`
+        ctx.font = `bold ${Math.max(8.5, radius * 0.125)}px 'Outfit', sans-serif`
         ctx.textAlign = 'center'
 
         for (let i = 0; i <= divisions; i++) {
@@ -781,9 +903,9 @@ function StereoVUMeters({ isPlaying, audioData, onToggleLight }: { isPlaying: bo
           const isRed = pct >= 0.75
 
           if (currentLightOn) {
-            ctx.strokeStyle = isRed ? '#d32f2f' : 'rgba(18,12,8,0.75)'
+            ctx.strokeStyle = isRed ? '#df2020' : 'rgba(18,12,8,0.75)'
           } else {
-            ctx.strokeStyle = isRed ? '#702222' : 'rgba(255,255,255,0.18)'
+            ctx.strokeStyle = isRed ? '#881337' : 'rgba(255,255,255,0.18)'
           }
           ctx.lineWidth = i % 4 === 0 ? 1.8 : 0.8
           
@@ -812,9 +934,9 @@ function StereoVUMeters({ isPlaying, audioData, onToggleLight }: { isPlaying: bo
 
             if (dbText) {
               if (currentLightOn) {
-                ctx.fillStyle = isRed ? '#d32f2f' : 'rgba(18,12,8,0.85)'
+                ctx.fillStyle = isRed ? '#df2020' : 'rgba(18,12,8,0.85)'
               } else {
-                ctx.fillStyle = isRed ? '#702222' : 'rgba(255,255,255,0.15)'
+                ctx.fillStyle = isRed ? '#881337' : 'rgba(255,255,255,0.15)'
               }
               const textDist = radius * 0.20
               const tx = Math.cos(angle) * (rTick - textDist)
@@ -831,7 +953,7 @@ function StereoVUMeters({ isPlaying, audioData, onToggleLight }: { isPlaying: bo
         ctx.arc(0, 0, radius * 0.92, startAngle, startAngle + (endAngle - startAngle) * 0.75)
         ctx.stroke()
 
-        ctx.strokeStyle = currentLightOn ? '#d32f2f' : '#702222'
+        ctx.strokeStyle = currentLightOn ? '#df2020' : '#881337'
         ctx.lineWidth = 2.5
         ctx.beginPath()
         ctx.arc(0, 0, radius * 0.92, startAngle + (endAngle - startAngle) * 0.75, endAngle)
@@ -852,17 +974,17 @@ function StereoVUMeters({ isPlaying, audioData, onToggleLight }: { isPlaying: bo
         
         ctx.save()
         if (currentLightOn) {
-          ctx.shadowColor = 'rgba(0, 0, 0, 0.4)'
-          ctx.shadowBlur = 3.5
-          ctx.shadowOffsetX = 1.0
-          ctx.shadowOffsetY = 1.2
-          ctx.strokeStyle = '#bf1515' // Vibrant warm red needle
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.35)'
+          ctx.shadowBlur = 4.5
+          ctx.shadowOffsetX = 1.8
+          ctx.shadowOffsetY = 2.2
+          ctx.strokeStyle = '#e11d48' // High-end rose-red needle
         } else {
-          ctx.shadowColor = 'rgba(0, 0, 0, 0.6)'
-          ctx.shadowBlur = 1.5
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.5)'
+          ctx.shadowBlur = 2.0
           ctx.shadowOffsetX = 0.5
           ctx.shadowOffsetY = 0.5
-          ctx.strokeStyle = '#631616' // Muted dark red needle
+          ctx.strokeStyle = '#881337' // Darker rose-red needle
         }
         
         ctx.lineWidth = Math.max(1.2, radius * 0.024)
@@ -872,15 +994,27 @@ function StereoVUMeters({ isPlaying, audioData, onToggleLight }: { isPlaying: bo
         ctx.stroke()
         ctx.restore()
 
-        // Responsive pivot caps
-        ctx.fillStyle = currentLightOn ? '#282522' : '#1a1816'
+        // Responsive multi-layered pivot caps
+        // Outer black ring
+        ctx.fillStyle = currentLightOn ? '#0f172a' : '#020617'
         ctx.beginPath()
-        ctx.arc(cx, cy, Math.max(5, radius * 0.095), 0, Math.PI * 2)
+        ctx.arc(cx, cy, Math.max(6, radius * 0.105), 0, Math.PI * 2)
         ctx.fill()
         
-        ctx.fillStyle = currentLightOn ? '#827f75' : '#4d4b45'
+        // Middle silver gradient bezel ring
+        const silverGrad = ctx.createLinearGradient(cx - 3, cy - 3, cx + 3, cy + 3)
+        silverGrad.addColorStop(0, '#cbd5e1')
+        silverGrad.addColorStop(0.5, '#475569')
+        silverGrad.addColorStop(1, '#f1f5f9')
+        ctx.fillStyle = silverGrad
         ctx.beginPath()
-        ctx.arc(cx, cy, Math.max(2, radius * 0.035), 0, Math.PI * 2)
+        ctx.arc(cx, cy, Math.max(3.5, radius * 0.055), 0, Math.PI * 2)
+        ctx.fill()
+
+        // Inner black center pin
+        ctx.fillStyle = '#020617'
+        ctx.beginPath()
+        ctx.arc(cx, cy, Math.max(1.8, radius * 0.022), 0, Math.PI * 2)
         ctx.fill()
 
         ctx.restore() // Restore clipped context
@@ -1025,6 +1159,69 @@ export default function Home() {
   const [isAiTalking, setIsAiTalking] = useState(false)
   const [audioData, setAudioData]   = useState<Uint8Array | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [playbackRate, setPlaybackRate] = useState(1.0)
+  const [isDraggingSpeed, setIsDraggingSpeed] = useState(false)
+  const [isMrMode, setIsMrMode] = useState(false)
+  const dragStartYRef = useRef<number>(0)
+  const dragStartRateRef = useRef<number>(1.0)
+  const knobRef = useRef<HTMLDivElement>(null)
+
+  // Load track list dynamically from server on page load
+  useEffect(() => {
+    const loadDynamicTracks = async () => {
+      try {
+        const res = await fetch('/api/tracks');
+        if (res.ok) {
+          const loadedTracks = await res.json();
+          if (loadedTracks.length > 0) {
+            setTracks(loadedTracks);
+            setTrack(loadedTracks[0]);
+          }
+        }
+      } catch (e) {
+        console.error("Failed to load tracks", e);
+      }
+    };
+    loadDynamicTracks();
+  }, []);
+
+  // Dev-only hot reload helper for corporate proxy / OneDrive synced folder envs
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'development') return;
+
+    let lastVersion: number | null = null;
+    let isReconnecting = false;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch('/api/dev-version');
+        if (!res.ok) return;
+        const data = await res.json();
+        
+        if (data.version) {
+          if (lastVersion !== null && lastVersion !== data.version && !isReconnecting) {
+            isReconnecting = true;
+            console.log('[AI Jukebox Dev] File changes detected. Auto-refreshing browser...');
+            setTimeout(() => {
+              window.location.reload();
+            }, 800);
+          } else {
+            lastVersion = data.version;
+          }
+        }
+      } catch (err) {
+        // Ignore errors during re-compilation
+      }
+    }, 1500);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.playbackRate = playbackRate
+    }
+  }, [playbackRate, track])
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -1035,7 +1232,7 @@ export default function Home() {
   }, [])
 
   const toggleFullscreen = () => {
-    const playerEl = document.querySelector('.center-player')
+    const playerEl = document.querySelector('.app-layout')
     if (!playerEl) return
     if (!document.fullscreenElement) {
       playerEl.requestFullscreen().then(() => {
@@ -1130,6 +1327,15 @@ export default function Home() {
     'WARM TUBE': [65, 62, 56, 50, 46, 44, 46, 52, 58, 62],
     'DANCE BOOM': [78, 82, 70, 50, 58, 65, 72, 65, 55, 48]
   })
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('aiJukeboxUserPresets');
+      if (saved) {
+        setCustomPresets(JSON.parse(saved));
+      }
+    } catch (e) {}
+  }, [])
   const [showSavePresetModal, setShowSavePresetModal] = useState(false)
   const [newPresetName, setNewPresetName] = useState('')
 
@@ -1140,6 +1346,57 @@ export default function Home() {
   const [bassBoost, setBassBoost]       = useState(20)      // 0-100
   const [vocalClarity, setVocalClarity] = useState(30)      // 0-100
   const [loudness, setLoudness]         = useState(true)
+
+  useEffect(() => {
+    const handleMrModeChange = async () => {
+      if (!audioRef.current) return;
+      const t = ctxRef.current?.currentTime || 0;
+      
+      if (isMrMode) {
+        // Try to load Demucs high-quality MR first
+        const mrSrc = track.src.replace('.mp3', '_mr.wav');
+        try {
+          const res = await fetch(mrSrc, { method: 'HEAD' });
+          if (res.ok) {
+            const currentTime = audioRef.current.currentTime;
+            const wasPlaying = !audioRef.current.paused;
+            audioRef.current.src = mrSrc;
+            audioRef.current.currentTime = currentTime;
+            if (wasPlaying) audioRef.current.play().catch(()=>{});
+            
+            // Disable WebAudio OOPS since we have native MR
+            if (mrDryRef.current && mrWetRef.current) {
+              mrDryRef.current.gain.setTargetAtTime(1, t, 0.1);
+              mrWetRef.current.gain.setTargetAtTime(0, t, 0.1);
+            }
+            return;
+          }
+        } catch (err) {}
+        
+        // Fallback: Web Audio OOPS Filter (Phase Cancellation)
+        if (mrDryRef.current && mrWetRef.current) {
+          mrDryRef.current.gain.setTargetAtTime(0, t, 0.1);
+          mrWetRef.current.gain.setTargetAtTime(1, t, 0.1);
+        }
+      } else {
+        // Revert to original track if playing MR
+        if (audioRef.current.src.includes('_mr.wav')) {
+          const currentTime = audioRef.current.currentTime;
+          const wasPlaying = !audioRef.current.paused;
+          audioRef.current.src = track.src;
+          audioRef.current.currentTime = currentTime;
+          if (wasPlaying) audioRef.current.play().catch(()=>{});
+        }
+        
+        // Disable OOPS
+        if (mrDryRef.current && mrWetRef.current) {
+          mrDryRef.current.gain.setTargetAtTime(1, t, 0.1);
+          mrWetRef.current.gain.setTargetAtTime(0, t, 0.1);
+        }
+      }
+    };
+    handleMrModeChange();
+  }, [isMrMode, track.src]);
 
   // Responsive Collapsible AI Sound Lab Sidebar state
   const [isAiLabOpen, setIsAiLabOpen] = useState(true)
@@ -1161,6 +1418,7 @@ export default function Home() {
 
   // Edit Metadata Modal States
   const [showEditModal, setShowEditModal] = useState(false)
+  const [editingTrack, setEditingTrack] = useState<Track | null>(null)
   const [editTitle, setEditTitle] = useState('')
   const [editArtist, setEditArtist] = useState('')
   const [editGenre, setEditGenre] = useState('')
@@ -1172,6 +1430,9 @@ export default function Home() {
   // AI Lyrics Generating State
   const [isGeneratingLyrics, setIsGeneratingLyrics] = useState(false)
   const [generatedTracks, setGeneratedTracks] = useState<Record<number, boolean>>({})
+
+  // AI Voice Narration State & Effect
+  const [isTtsNarratorEnabled, setIsTtsNarratorEnabled] = useState(false)
 
   // 3D Album Cover Cylinder Slot-Machine States
   const [isCylinderSpinning, setIsCylinderSpinning] = useState(false)
@@ -1194,6 +1455,8 @@ export default function Home() {
   const convolverRef   = useRef<ConvolverNode | null>(null)
   const echoWetGainRef = useRef<GainNode | null>(null)
   const compressorRef  = useRef<DynamicsCompressorNode | null>(null)
+  const mrDryRef       = useRef<GainNode | null>(null)
+  const mrWetRef       = useRef<GainNode | null>(null)
   
   const rtaCanvasRef   = useRef<HTMLCanvasElement>(null)
   const lyricsContainerRef = useRef<HTMLDivElement>(null)
@@ -1223,9 +1486,55 @@ export default function Home() {
     const ctx = new AudioContext()
     const src = ctx.createMediaElementSource(audioRef.current)
 
+    // --- Pro MR Mode (OOPS + Bass Recovery) Stage ---
+    const splitter = ctx.createChannelSplitter(2)
+    const merger = ctx.createChannelMerger(2)
+    
+    // 1. OOPS Path (L - R) to remove center vocals (mid/high frequencies)
+    const inverter = ctx.createGain()
+    inverter.gain.value = -1
+
+    splitter.connect(merger, 0, 0)
+    splitter.connect(inverter, 1)
+    inverter.connect(merger, 0, 0)
+    
+    splitter.connect(merger, 0, 1)
+    inverter.connect(merger, 0, 1)
+
+    // 2. Bass Recovery Path (L + R, Lowpass filtered to keep kick/sub-bass intact)
+    const bassSum = ctx.createGain()
+    bassSum.gain.value = 0.6
+    const bassFilter = ctx.createBiquadFilter()
+    bassFilter.type = 'lowpass'
+    bassFilter.frequency.value = 180
+    bassFilter.Q.value = 0.5
+    
+    splitter.connect(bassSum, 0)
+    splitter.connect(bassSum, 1)
+    bassSum.connect(bassFilter)
+    bassFilter.connect(merger, 0, 0)
+    bassFilter.connect(merger, 0, 1)
+
+    const mrDryNode = ctx.createGain()
+    const mrWetNode = ctx.createGain()
+    
+    src.connect(mrDryNode)
+    src.connect(splitter)
+    merger.connect(mrWetNode)
+
+    const preEqNode = ctx.createGain()
+    mrDryNode.connect(preEqNode)
+    mrWetNode.connect(preEqNode)
+
+    mrDryRef.current = mrDryNode
+    mrWetRef.current = mrWetNode
+
+    mrDryNode.gain.value = isMrMode ? 0 : 1
+    mrWetNode.gain.value = isMrMode ? 1 : 0
+
     // Series 10-Band EQ filters
     const filters: BiquadFilterNode[] = []
-    let lastNode: AudioNode = src
+    let lastNode: AudioNode = preEqNode
 
     EQ_FREQS.forEach((freq) => {
       const filter = ctx.createBiquadFilter()
@@ -1306,6 +1615,8 @@ export default function Home() {
     // Visual Analyser
     const an = ctx.createAnalyser()
     an.fftSize = 2048
+    an.minDecibels = -90
+    an.maxDecibels = -10
     compressor.connect(an)
     an.connect(ctx.destination)
 
@@ -1630,6 +1941,22 @@ export default function Home() {
     // Set loading track state for high-end responsive feedback in sidebar listing
     setLoadingTrackId(t.id)
     
+    // Fetch persisted metadata (.ifx) from local server in background
+    const filename = t.src.split('/').pop()?.replace(/\.[^/.]+$/, "") || ""
+    let latestTrackObj = t;
+    if (filename) {
+      fetch(`/api/track-metadata?filename=${encodeURIComponent(filename)}`)
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data) {
+            const merged = { ...t, ...data };
+            latestTrackObj = merged;
+            setTracks(prev => prev.map(x => x.id === t.id ? merged : x));
+          }
+        })
+        .catch(err => console.error("Error loading track metadata on select:", err));
+    }
+    
     // Synchronously change the source and start playing in muted state during user gesture
     // to unblock the browser autoplay policy for delayed playback
     if (shouldPlay && audioRef.current) {
@@ -1691,7 +2018,7 @@ export default function Home() {
 
       // EXACT MOMENT OF SWAP: Now that the flight loader has aligned exactly with the deck,
       // update active track state and reset position! Player mode remains unchanged.
-      setTrack(t)
+      setTrack(latestTrackObj)
       setTime(0)
       
       if (audioRef.current) {
@@ -1737,9 +2064,23 @@ export default function Home() {
     selectTrack(prev, true, !shuffle)
   }
 
+  const getDuration = () => {
+    if (audioRef.current && !isNaN(audioRef.current.duration) && audioRef.current.duration > 0 && audioRef.current.duration !== Infinity) {
+      return audioRef.current.duration
+    }
+    return track.duration
+  }
+
+  const getVocalIntensity = () => {
+    if (!audioData) return 0
+    const vocalSlice = audioData.slice(15, 60)
+    const sum = vocalSlice.reduce((a, b) => a + b, 0)
+    return sum / (vocalSlice.length * 255)
+  }
+
   const seek = (e: React.MouseEvent<HTMLDivElement>) => {
     const r = (e.clientX - e.currentTarget.getBoundingClientRect().left) / e.currentTarget.offsetWidth
-    const t = r * track.duration
+    const t = r * getDuration()
     setTime(t)
     if (audioRef.current) audioRef.current.currentTime = t
   }
@@ -1791,6 +2132,53 @@ export default function Home() {
         }, cumulativeDelay)
       }
     })
+  }
+
+  const handleKnobMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsDraggingSpeed(true)
+    dragStartYRef.current = e.clientY
+    dragStartRateRef.current = playbackRate
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const deltaY = dragStartYRef.current - moveEvent.clientY
+      const change = (deltaY / 100) * 1.5
+      const newRate = Math.max(0.5, Math.min(2.0, dragStartRateRef.current + change))
+      setPlaybackRate(Math.round(newRate * 10) / 10)
+    }
+
+    const onMouseUp = () => {
+      setIsDraggingSpeed(false)
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mouseup', onMouseUp)
+    }
+
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
+  }
+
+  const handleKnobTouchStart = (e: React.TouchEvent) => {
+    if (!e.touches[0]) return
+    setIsDraggingSpeed(true)
+    dragStartYRef.current = e.touches[0].clientY
+    dragStartRateRef.current = playbackRate
+
+    const onTouchMove = (moveEvent: TouchEvent) => {
+      if (!moveEvent.touches[0]) return
+      const deltaY = dragStartYRef.current - moveEvent.touches[0].clientY
+      const change = (deltaY / 100) * 1.5
+      const newRate = Math.max(0.5, Math.min(2.0, dragStartRateRef.current + change))
+      setPlaybackRate(Math.round(newRate * 10) / 10)
+    }
+
+    const onTouchEnd = () => {
+      setIsDraggingSpeed(false)
+      document.removeEventListener('touchmove', onTouchMove)
+      document.removeEventListener('touchend', onTouchEnd)
+    }
+
+    document.addEventListener('touchmove', onTouchMove)
+    document.addEventListener('touchend', onTouchEnd)
   }
 
   // Interactive mouse drag & touch swipe listeners for 3D Cover Flow (Continuous high-fidelity scrolling)
@@ -1947,10 +2335,20 @@ export default function Home() {
   const saveCustomPreset = () => {
     if (!newPresetName.trim()) return
     const name = newPresetName.toUpperCase()
-    setCustomPresets(prev => ({
-      ...prev,
-      [name]: [...eqGains]
-    }))
+    
+    setCustomPresets(prev => {
+      const next = { ...prev, [name]: [...eqGains] };
+      // Limit to 2 default + 3 custom = 5 max
+      const keys = Object.keys(next);
+      if (keys.length > 5) {
+        const toRemove = keys.find(k => k !== 'WARM TUBE' && k !== 'DANCE BOOM' && k !== name);
+        if (toRemove) delete next[toRemove];
+      }
+      try {
+        localStorage.setItem('aiJukeboxUserPresets', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
     setPreset(name)
     setNewPresetName('')
     setShowSavePresetModal(false)
@@ -1969,67 +2367,92 @@ export default function Home() {
     const file = e.target.files?.[0]
     if (!file) return
 
-    const objectUrl = URL.createObjectURL(file)
-    
-    // Parse ID3v2 metadata (including native cover art image)
-    let parsedMeta: { title?: string; artist?: string; coverUrl?: string } = {};
+    let parsedMeta: { title?: string; artist?: string; coverUrl?: string; coverBlob?: Blob } = {};
     try {
       parsedMeta = await parseMp3Metadata(file);
     } catch (err) {
       console.error("ID3 parsing error:", err);
     }
 
-    const newTrack: Track = {
-      id: tracks.length + 1,
-      title: parsedMeta.title || file.name.replace(/\.[^/.]+$/, ""),
-      artist: parsedMeta.artist || 'Local Upload',
-      genre: 'Indie',
-      mood: ['#Uploaded', '#MyMusic'],
-      bpm: 100,
-      key: 'C Major',
-      mediaPref: mediaType,
-      duration: 200, // placeholder, will auto calculate on load
-      lyrics: ['직접 업로드한 곡입니다.', '가사 속성을 편집하여 넣어보세요.'],
-      src: objectUrl,
-      linerNotes: 'An imported offline track loaded directly into the AI Jukebox context.',
-      coverUrl: parsedMeta.coverUrl || 'https://images.unsplash.com/photo-1487180142328-054b783fc471?w=300&q=80'
-    }
+    const formData = new FormData();
+    formData.append('file', file);
+    if (parsedMeta.title) formData.append('title', parsedMeta.title);
+    if (parsedMeta.artist) formData.append('artist', parsedMeta.artist);
+    if (parsedMeta.coverBlob) formData.append('coverBlob', parsedMeta.coverBlob, 'cover.jpg');
 
-    // Auto read audio duration using browser audio element
-    const tempAudio = new Audio(objectUrl)
-    tempAudio.addEventListener('loadedmetadata', () => {
-      newTrack.duration = Math.floor(tempAudio.duration)
-      const nextTracks = [...tracks, newTrack]
-      setTracks(nextTracks)
-      selectTrack(newTrack)
-    })
+    try {
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        
+        // Refetch the dynamic tracks list
+        const tracksRes = await fetch('/api/tracks');
+        if (tracksRes.ok) {
+          const updatedTracks = await tracksRes.json();
+          setTracks(updatedTracks);
+          
+          // Select the newly uploaded track
+          const newTrack = updatedTracks.find((t: Track) => t.src.includes(data.filename)) || updatedTracks[updatedTracks.length - 1];
+          if (newTrack) {
+            selectTrack(newTrack);
+          }
+        }
+        
+        speakResponse("오디오 트랙이 성공적으로 시스템에 업로드되고 저장되었습니다.");
+      } else {
+        throw new Error("Upload failed");
+      }
+    } catch (err) {
+      console.error("Error uploading file:", err);
+      speakResponse("오디오 업로드에 실패했습니다.");
+    }
   }
 
-  // AI Generative Lyrics simulation (Streams beautiful lyrics with Sparkles vibe)
-  const generateAiLyrics = () => {
+  // AI Generative Lyrics using Python Backend (Whisper + Demucs)
+  const generateAiLyrics = async () => {
     setIsGeneratingLyrics(true)
-    let progressStr = 'AI 딥러닝 엔진이 곡의 주파수 분위기를 스캔하고 있습니다...'
-    setTrack(prev => ({ ...prev, lyrics: [progressStr] }))
 
-    setTimeout(() => {
-      const parts = [
-        "지나간 슬픔은 푸른 연기처럼 흩어지네,",
-        "새로운 은하수 아래 너와 나의 깊은 떨림,",
-        "사운드 랩의 공간 속에 가득 피어오르는 멜로디,",
-        "이 끝없는 밤을 지나 영원을 향해 노래하리"
-      ]
-      setTrack(prev => ({
-        ...prev,
-        lyrics: parts
-      }))
-      setGeneratedTracks(prev => ({ ...prev, [track.id]: true }))
+    const filename = track.src.split('/').pop()?.replace(/\.[^/.]+$/, "") || ""
+    if (!filename) {
       setIsGeneratingLyrics(false)
-      speakResponse("스캔 완료! 곡의 멜로디에 어울리는 감성적인 가사를 AI가 실시간 매칭하였습니다.")
-    }, 2800)
+      return
+    }
+
+    try {
+      const res = await fetch('/api/synthesize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename })
+      })
+
+      if (!res.ok) throw new Error("Synthesis failed")
+
+      // Reload metadata from .ifx which the Python script just updated
+      const metaRes = await fetch(`/api/track-metadata?filename=${encodeURIComponent(filename)}`)
+      if (metaRes.ok) {
+        const data = await metaRes.json()
+        const updatedTrack = { ...track, ...data }
+        setTrack(updatedTrack)
+        setTracks(prevTracks => prevTracks.map(x => x.id === track.id ? updatedTrack : x))
+      }
+
+      setGeneratedTracks(prev => ({ ...prev, [track.id]: true }))
+      speakResponse("오디오 주파수 스캔 및 AI 보컬 분석이 완료되었습니다. 추출된 타임스탬프 기반 가사가 적용됩니다.")
+    } catch (err) {
+      console.error(err)
+      speakResponse("가사 추출 중 오류가 발생했습니다. Whisper 및 Demucs 모듈 설치 상태를 확인해주세요.")
+    } finally {
+      setIsGeneratingLyrics(false)
+    }
   }
 
   // Open Edit Track Modal & Bind variables
   const openEditDialog = (t: Track) => {
+    setEditingTrack(t)
     setEditTitle(t.title)
     setEditArtist(t.artist)
     setEditGenre(t.genre)
@@ -2042,45 +2465,174 @@ export default function Home() {
 
   // Save Track meta configurations
   const saveTrackProperties = () => {
+    if (!editingTrack) return
+    const updatedTrack = {
+      ...editingTrack,
+      title: editTitle,
+      artist: editArtist,
+      genre: editGenre,
+      bpm: Number(editBpm),
+      key: editKey,
+      coverUrl: editCover,
+      lyrics: editLyricsText.split('\n').filter(l => l.trim().length > 0)
+    }
+
     const updated = tracks.map(t => {
-      if (t.id === track.id) {
-        return {
-          ...t,
-          title: editTitle,
-          artist: editArtist,
-          genre: editGenre,
-          bpm: Number(editBpm),
-          key: editKey,
-          coverUrl: editCover,
-          lyrics: editLyricsText.split('\n').filter(l => l.trim().length > 0)
-        }
-      }
+      if (t.id === editingTrack.id) return updatedTrack
       return t
     })
     setTracks(updated)
-    const currentUpdated = updated.find(t => t.id === track.id)
-    if (currentUpdated) setTrack(currentUpdated)
+    if (track.id === editingTrack.id) {
+      setTrack(updatedTrack)
+    }
+
+    // Persist to server metadata file (.ifx) inside public/music
+    const filename = editingTrack.src.split('/').pop()?.replace(/\.[^/.]+$/, "") || ""
+    if (filename) {
+      fetch('/api/track-metadata', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          filename,
+          metadata: {
+            title: updatedTrack.title,
+            artist: updatedTrack.artist,
+            genre: updatedTrack.genre,
+            bpm: updatedTrack.bpm,
+            key: updatedTrack.key,
+            coverUrl: updatedTrack.coverUrl,
+            lyrics: updatedTrack.lyrics,
+            linerNotes: updatedTrack.linerNotes
+          }
+        })
+      })
+      .then(res => {
+        if (!res.ok) throw new Error('Save failed')
+        return res.json()
+      })
+      .then(() => {
+        speakResponse("곡 정보 및 가사 파일이 음악 디렉토리에 성공적으로 저장되었습니다.")
+      })
+      .catch(err => {
+        console.error("Error saving track metadata:", err)
+      })
+    }
+
+    setEditingTrack(null)
     setShowEditModal(false)
   }
 
-  // Live Auto Scrolling Karaoke Syncer logic
-  const activeLyricIndex = Math.min(
-    track.lyrics.length - 1,
-    Math.floor((currentTime / Math.max(track.duration, 1)) * track.lyrics.length)
-  )
+  const formatTime = (secs: number) => {
+    const m = Math.floor(secs / 60);
+    const s = Math.floor(secs % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  }
 
-  useEffect(() => {
-    if (lyricsContainerRef.current) {
-      const container = lyricsContainerRef.current
-      const activeLine = container.querySelector('.active') as HTMLElement
-      if (activeLine) {
-        container.scrollTo({
-          top: activeLine.offsetTop - container.offsetHeight / 2 + activeLine.offsetHeight / 2,
-          behavior: 'smooth'
-        })
+  // Parse lines with timestamps or distribute them smartly in the vocal range (8% to 92%)
+  const parsedLyrics = useMemo(() => {
+    return (track.lyrics || []).map((line, idx) => {
+      const match = line.match(/^\[(\d+):(\d+(?:\.\d+)?)\](.*)/)
+      if (match) {
+        const mins = parseInt(match[1], 10)
+        const secs = parseFloat(match[2])
+        const time = mins * 60 + secs
+        const text = match[3].trim()
+        return { time, text, original: line }
+      }
+      const vocalStartPct = 0.08
+      const vocalEndPct = 0.92
+      const duration = getDuration()
+      const progress = track.lyrics.length > 1 ? idx / (track.lyrics.length - 1) : 0.5
+      const estimatedTime = duration * (vocalStartPct + progress * (vocalEndPct - vocalStartPct))
+      return { time: estimatedTime, text: line, original: line }
+    })
+  }, [track.lyrics, track.duration])
+
+  // Live Auto Scrolling Karaoke Syncer logic based on parsed times
+  const activeLyricIndex = useMemo(() => {
+    if (parsedLyrics.length === 0) return 0
+    let foundIdx = 0
+    for (let i = 0; i < parsedLyrics.length; i++) {
+      if (currentTime >= parsedLyrics[i].time) {
+        foundIdx = i
       }
     }
-  }, [activeLyricIndex])
+    return foundIdx
+  }, [parsedLyrics, currentTime])
+
+  // Continuous smooth scrolling based on precise audio time interpolation
+  useEffect(() => {
+    let animationFrameId: number;
+    const container = lyricsContainerRef.current;
+    if (!container || parsedLyrics.length === 0) return;
+
+    const scrollLoop = () => {
+      if (audioRef.current && isPlaying) {
+        const preciseTime = audioRef.current.currentTime;
+        let currentIndex = 0;
+        
+        for (let i = 0; i < parsedLyrics.length; i++) {
+          if (preciseTime >= parsedLyrics[i].time) {
+            currentIndex = i;
+          }
+        }
+        
+        const currentLyric = parsedLyrics[currentIndex];
+        const nextLyric = parsedLyrics[currentIndex + 1];
+        
+        const lineElements = container.querySelectorAll('.lyrics-line');
+        const currentEl = lineElements[currentIndex] as HTMLElement;
+        
+        if (currentEl) {
+          let scrollTarget = currentEl.offsetTop - container.offsetHeight / 2 + currentEl.offsetHeight / 2;
+          
+          if (nextLyric) {
+            const timeRange = nextLyric.time - currentLyric.time;
+            const timeProgress = preciseTime - currentLyric.time;
+            let progressRatio = timeRange > 0 ? timeProgress / timeRange : 0;
+            progressRatio = Math.max(0, Math.min(1, progressRatio));
+            
+            // Linear progression creates a smooth slow scroll between lines
+            const nextEl = lineElements[currentIndex + 1] as HTMLElement;
+            if (nextEl) {
+              const distanceToNext = nextEl.offsetTop - currentEl.offsetTop;
+              scrollTarget += distanceToNext * progressRatio;
+            }
+          }
+          
+          // Lerp for butter-smooth visual motion without jitter
+          container.scrollTop += (scrollTarget - container.scrollTop) * 0.08;
+        }
+      }
+      animationFrameId = requestAnimationFrame(scrollLoop);
+    };
+    
+    scrollLoop();
+    
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [parsedLyrics, isPlaying]);
+
+  // AI Voice Narration Effect to read active lyric line in real-time
+  useEffect(() => {
+    const activeLine = parsedLyrics[activeLyricIndex]
+    if (isTtsNarratorEnabled && activeLine && activeLine.text && isPlaying) {
+      const text = activeLine.text;
+      if (text.startsWith('[') && text.endsWith(']')) return;
+      if (text.includes('스캔하고 있습니다') || text.includes('분위기 매칭 대기 중')) return;
+      
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 1.0;
+        const voices = window.speechSynthesis.getVoices();
+        const koVoice = voices.find(v => v.lang.startsWith('ko'));
+        if (koVoice) utterance.voice = koVoice;
+        window.speechSynthesis.speak(utterance);
+      }
+    }
+  }, [activeLyricIndex, isTtsNarratorEnabled, isPlaying, parsedLyrics]);
 
   const pendingTrack = tracks.find(x => x.id === loadingTrackId) || track
 
@@ -2109,7 +2661,7 @@ export default function Home() {
     })
   }, [tracks, activePlaylist])
 
-  const progressPct = (currentTime / Math.max(track.duration, 1)) * 100
+  const progressPct = Math.min(100, (currentTime / Math.max(getDuration(), 1)) * 100)
 
   // Cassette tape dynamic winding reel sizes (percentage of container width)
   const leftReelSize = 11.6 + (1 - progressPct / 100) * 14.4
@@ -2119,7 +2671,7 @@ export default function Home() {
   const spinSpeedClass = isPlaying ? 'spinning' : ''
 
   return (
-    <div className={`app-layout ${!isAiLabOpen ? 'ai-lab-collapsed' : ''}`} data-mode={mediaType}>
+    <div className={`app-layout ${!isAiLabOpen ? 'ai-lab-collapsed' : ''} ${isFullscreen ? 'fullscreen-mode' : ''}`} data-mode={mediaType}>
       {/* ── HEADER ── */}
       <header className="app-header">
         <div className="logo">
@@ -2209,17 +2761,6 @@ export default function Home() {
           )}
         </div>
 
-        {/* Offline Audio File Uploader */}
-        <div style={{ padding: '4px 0' }}>
-          <div className="section-label">Drop & Upload MP3</div>
-          <label className="uploader-box" style={{ display: 'block' }}>
-            <Upload size={20} style={{ margin: '0 auto 6px', color: 'var(--accent)' }} />
-            <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)' }}>Web MP3 Import</div>
-            <div style={{ fontSize: '10px', color: 'var(--text-dim)', marginTop: '2px' }}>Click to select audio</div>
-            <input type="file" accept="audio/*" onChange={handleFileUpload} style={{ display: 'none' }} />
-          </label>
-        </div>
-
         {/* Playlists */}
         <div>
           <div className="section-label">Playlists</div>
@@ -2238,10 +2779,35 @@ export default function Home() {
         </div>
 
         {/* Tracks List with custom edit triggers */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-          <div className="section-label">Tracks Directory</div>
-          <div className="custom-scrollbar" style={{ overflowY: 'auto', flex: 1, maxHeight: 'calc(100vh - 330px)', paddingRight: '4px' }}>
-            {filteredTracks.map(t => {
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <div className="section-label" style={{ marginBottom: 0 }}>Tracks Directory</div>
+            <button
+              onClick={async () => {
+                try {
+                  const res = await fetch('/api/tracks');
+                  if (res.ok) {
+                    const loadedTracks = await res.json();
+                    if (loadedTracks.length > 0) {
+                      setTracks(loadedTracks);
+                      speakResponse("음악 디렉토리가 성공적으로 새로고침되었습니다.");
+                    }
+                  }
+                } catch (e) {
+                  console.error("Failed to load tracks", e);
+                }
+              }}
+              style={{
+                background: 'rgba(255,255,255,0.05)', border: '1px solid var(--panel-border)',
+                borderRadius: '4px', padding: '2px 6px', color: 'var(--text-dim)', fontSize: '10px',
+                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
+              }}
+            >
+              <RefreshCw size={10} /> REFRESH
+            </button>
+          </div>
+          <div className="custom-scrollbar" style={{ overflowY: 'auto', flex: 1, minHeight: 0, paddingRight: '4px' }}>
+            {filteredTracks.map((t, index) => {
               const isCurrent = track.id === t.id
               const isLoading = loadingTrackId === t.id
               const isActive = isCurrent || isLoading
@@ -2259,22 +2825,72 @@ export default function Home() {
                       animation: 'shimmer 1.5s infinite'
                     }} />
                   )}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'relative', zIndex: 1 }}>
-                    <div style={{ fontSize: '14.5px', fontWeight: 700, color: isActive ? 'var(--accent)' : 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '280px' }}>{t.title}</div>
-                    {isCurrent ? (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); openEditDialog(t) }}
-                      style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', opacity: 0.8 }}
-                    >
-                      <Edit3 size={11} />
-                    </button>
-                  ) : null}
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', position: 'relative', zIndex: 1 }}>
+                    <span style={{ fontSize: '11px', color: isActive ? 'var(--accent)' : 'var(--text-dim)', opacity: 0.6, width: '16px', textAlign: 'right', fontWeight: 700 }}>
+                      {(index + 1).toString().padStart(2, '0')}
+                    </span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontSize: '13.5px', fontWeight: isActive ? 800 : 600, color: isActive ? 'var(--accent)' : 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.title}</div>
+                        {isCurrent ? (
+                          <div style={{ display: 'flex', gap: '4px' }}>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); openEditDialog(t) }}
+                              style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', opacity: 0.8, padding: '2px' }}
+                            >
+                              <Edit3 size={11} />
+                            </button>
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                if (window.confirm(`'${t.title}' 곡을 삭제하시겠습니까?`)) {
+                                  const filename = t.src.split('/').pop();
+                                  if (filename) {
+                                    try {
+                                      const res = await fetch('/api/delete', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ filename })
+                                      });
+                                      if (res.ok) {
+                                        speakResponse("곡이 삭제되었습니다.");
+                                        const tracksRes = await fetch('/api/tracks');
+                                        if (tracksRes.ok) {
+                                          const updatedTracks = await tracksRes.json();
+                                          setTracks(updatedTracks);
+                                        }
+                                      }
+                                    } catch (err) {
+                                      console.error("Delete failed:", err);
+                                    }
+                                  }
+                                }
+                              }}
+                              style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', opacity: 0.8, padding: '2px' }}
+                            >
+                              <Trash2 size={11} />
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '1px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.artist}</div>
+                    </div>
+                  </div>
                 </div>
-                <div style={{ fontSize: '12.5px', color: 'var(--text-dim)', marginTop: '2px' }}>{t.artist}</div>
-              </div>
               )
             })}
           </div>
+        </div>
+
+        {/* Offline Audio File Uploader - Moved below Tracks Directory */}
+        <div style={{ padding: '4px 0', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '10px' }}>
+          <div className="section-label" style={{ marginBottom: '6px' }}>Drop & Upload MP3</div>
+          <label className="uploader-box" style={{ display: 'block', padding: '10px' }}>
+            <Upload size={16} style={{ margin: '0 auto 4px', color: 'var(--accent)' }} />
+            <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text)' }}>Web MP3 Import</div>
+            <div style={{ fontSize: '9px', color: 'var(--text-dim)', marginTop: '1px' }}>Click to select audio</div>
+            <input type="file" accept="audio/*" onChange={handleFileUpload} style={{ display: 'none' }} />
+          </label>
         </div>
       </aside>
 
@@ -2288,8 +2904,8 @@ export default function Home() {
             style={{ width: '40px', height: '40px', borderRadius: '6px', objectFit: 'cover', border: '1px solid var(--panel-border)' }}
           />
           <div>
-            <div style={{ fontSize: '15px', fontWeight: 800 }}>{track.title}</div>
-            <div style={{ fontSize: '12px', color: 'var(--text-dim)', marginTop: '1.5px' }}>{track.artist} • <span style={{ color: 'var(--accent)' }}>{track.genre}</span></div>
+            <div style={{ fontSize: '17px', fontWeight: 800 }}>{track.title}</div>
+            <div style={{ fontSize: '13.5px', color: 'var(--text-dim)', marginTop: '1.5px' }}>{track.artist} • <span style={{ color: 'var(--accent)' }}>{track.genre}</span></div>
           </div>
           <button
             onClick={() => openEditDialog(track)}
@@ -2325,6 +2941,7 @@ export default function Home() {
                   <div className="flight-cd-label">
                     <img src={pendingTrack.coverUrl || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=300&q=80'} alt="" />
                   </div>
+                  <div className="flight-cd-spindle" />
                 </div>
               )}
               {flightType === 'TAPE' && (
@@ -2695,33 +3312,106 @@ export default function Home() {
             <div className="progress-track" onClick={seek}>
               <div className="progress-fill" style={{ width: `${progressPct}%` }} />
             </div>
-            <span>{fmt(track.duration)}</span>
+            <span>{fmt(getDuration())}</span>
           </div>
 
-          <div className="transport-row" style={{ pointerEvents: loadingTrackId !== null ? 'none' : 'auto', opacity: loadingTrackId !== null ? 0.7 : 1, transition: 'all 0.3s ease' }}>
-            <button className="btn-transport" onClick={() => setShuffle(!shuffle)}
-              style={{ color: shuffle ? 'var(--accent)' : undefined }}>
-              <Shuffle size={15} />
-            </button>
-            <button className="btn-transport" onClick={skipPrev}><SkipBack size={18} /></button>
-            <button className="btn-play" onClick={toggle}>
-              {isPlaying ? <Pause size={20} color="#000" /> : <Play size={20} color="#000" style={{ marginLeft: 2 }} />}
-            </button>
-            <button className="btn-transport" onClick={skipNext}><SkipForward size={18} /></button>
-            <button className="btn-transport" onClick={() => setRepeat(!repeat)}
-              style={{ color: repeat ? 'var(--accent)' : undefined }}>
-              <Repeat size={15} />
-            </button>
-
-            {/* Volume slider */}
-            <div className="volume-row" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <button className="btn-transport" onClick={() => setMuted(!muted)} style={{ cursor: 'pointer' }}>
-                {muted ? <VolumeX size={13} /> : <Volume2 size={13} />}
+          <div className="transport-row" style={{ 
+            display: 'grid', 
+            gridTemplateColumns: '1fr auto 1fr', 
+            alignItems: 'center', 
+            width: '100%',
+            pointerEvents: loadingTrackId !== null ? 'none' : 'auto', 
+            opacity: loadingTrackId !== null ? 0.7 : 1, 
+            transition: 'all 0.3s ease',
+            gap: '24px'
+          }}>
+            {/* Left Controls: Shuffle, Repeat, Speed Slider */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', justifyContent: 'flex-start' }}>
+              <button className="btn-transport" onClick={() => setShuffle(!shuffle)}
+                style={{ color: shuffle ? 'var(--accent)' : undefined }}
+                title="Shuffle">
+                <Shuffle size={18} />
               </button>
-              <input type="range" className="vol" min={0} max={1} step={0.01}
-                value={muted ? 0 : volume}
-                onChange={e => { setVolume(+e.target.value); setMuted(false) }}
-                style={{ width: '60px', accentColor: 'var(--accent)', cursor: 'pointer', height: '3px' }} />
+              
+              <button className="btn-transport" onClick={() => setRepeat(!repeat)}
+                style={{ color: repeat ? 'var(--accent)' : undefined }}
+                title="Repeat">
+                <Repeat size={18} />
+              </button>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: '6px' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-dim)', fontWeight: 800, letterSpacing: '0.5px' }}>SPEED</span>
+                <input type="range" min={0.5} max={2.0} step={0.1}
+                  value={playbackRate}
+                  onChange={e => {
+                    const rate = +e.target.value
+                    setPlaybackRate(rate)
+                    if (audioRef.current) {
+                      audioRef.current.playbackRate = rate
+                    }
+                  }}
+                  style={{ width: '80px', accentColor: 'var(--accent)', cursor: 'pointer', height: '4px' }}
+                  title="Playback Speed Slider" />
+                <span style={{ fontSize: '12.5px', color: 'var(--accent)', fontWeight: '800', minWidth: '32px', fontFamily: "'JetBrains Mono', monospace" }}>
+                  {playbackRate.toFixed(1)}x
+                </span>
+              </div>
+            </div>
+
+            {/* Center Controls: Playback buttons */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', justifyContent: 'center' }}>
+              <button className="btn-transport" onClick={skipPrev} title="Previous Track">
+                <SkipBack size={22} />
+              </button>
+              
+              <button 
+                className="btn-transport" 
+                onClick={() => {
+                  if (audioRef.current) {
+                    const newTime = Math.max(0, audioRef.current.currentTime - 10)
+                    audioRef.current.currentTime = newTime
+                    setTime(newTime)
+                  }
+                }} 
+                title="Rewind 10s"
+              >
+                <Rewind size={22} />
+              </button>
+
+              <button className="btn-play" onClick={toggle} title={isPlaying ? "Pause" : "Play"}>
+                {isPlaying ? <Pause size={26} color="#000" /> : <Play size={26} color="#000" style={{ marginLeft: 3 }} />}
+              </button>
+
+              <button 
+                className="btn-transport" 
+                onClick={() => {
+                  if (audioRef.current) {
+                    const newTime = Math.min(getDuration(), audioRef.current.currentTime + 10)
+                    audioRef.current.currentTime = newTime
+                    setTime(newTime)
+                  }
+                }} 
+                title="Fast Forward 10s"
+              >
+                <FastForward size={22} />
+              </button>
+
+              <button className="btn-transport" onClick={skipNext} title="Next Track">
+                <SkipForward size={22} />
+              </button>
+            </div>
+
+            {/* Right Controls: Volume */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-end' }}>
+              <div className="volume-row" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button className="btn-transport" onClick={() => setMuted(!muted)} style={{ cursor: 'pointer' }} title={muted ? "Unmute" : "Mute"}>
+                  {muted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+                </button>
+                <input type="range" className="vol" min={0} max={1} step={0.01}
+                  value={muted ? 0 : volume}
+                  onChange={e => { setVolume(+e.target.value); setMuted(false) }}
+                  style={{ width: '130px', accentColor: 'var(--accent)', cursor: 'pointer', height: '4px' }} />
+              </div>
             </div>
           </div>
         </div>
@@ -2742,7 +3432,7 @@ export default function Home() {
             <WaveformCanvas isPlaying={isPlaying} audioData={audioData} mode={mediaType} />
             
             {/* Real Audio frequency bands */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', color: 'var(--text-dim)', fontFamily: "'Courier New', Courier, monospace", fontWeight: 700, opacity: 0.8, padding: '2px 6px 0 6px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', color: 'var(--text-dim)', fontFamily: "'Courier New', Courier, monospace", fontWeight: 700, opacity: 0.8, padding: '2px 6px 0 44px' }}>
               <span>5Hz</span>
               <span>40Hz</span>
               <span>150Hz</span>
@@ -2769,6 +3459,7 @@ export default function Home() {
               isPlaying={isPlaying} 
               audioData={audioData} 
               onToggleLight={() => playMechanicalSound('button')}
+              mode={mediaType}
             />
             
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', color: 'var(--text-dim)', fontFamily: "'Courier New', Courier, monospace", fontWeight: 700, opacity: 0.8, padding: '2px 6px 0 6px' }}>
@@ -2790,7 +3481,7 @@ export default function Home() {
       </div>
 
       {/* ── AI SOUND LAB (10-Band EQ + Spatial Sound Effects) ── */}
-      <aside className="ai-lab" style={{ display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto' }}>
+      <aside className="ai-lab" style={{ display: 'flex', flexDirection: 'column', gap: '8px', overflowY: 'hidden' }}>
         <div className="section-label" style={{ marginBottom: 2 }}>AI Sound Lab</div>
 
         {/* 10-Band EQ Graphic Faders with RTA background spectrum */}
@@ -2805,7 +3496,7 @@ export default function Home() {
             </button>
           </div>
           
-          <div className="eq-10band-container" style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', background: 'rgba(0,0,0,0.35)', padding: '10px 6px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.05)', height: '116px' }}>
+          <div className="eq-10band-container" style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', background: 'rgba(0,0,0,0.35)', padding: '10px 6px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.05)', height: '100px' }}>
             {/* RTA Canvas floating behind the inputs */}
             <canvas ref={rtaCanvasRef} className="rta-canvas" />
 
@@ -2853,6 +3544,53 @@ export default function Home() {
           </div>
         </div>
 
+        {/* EQ & Sound Presets combined */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div style={{ fontSize: 12.5, color: 'var(--text-dim)', fontWeight: 600, display: 'flex', justifyContent: 'space-between' }}>
+            <span>EQ & Tuning Presets</span>
+            <span style={{ fontSize: '10px', color: 'var(--accent)' }}>ALL ACTIVE</span>
+          </div>
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px',
+            background: 'rgba(0,0,0,0.25)',
+            padding: '8px',
+            borderRadius: '10px',
+            border: '1px solid var(--panel-border)'
+          }}>
+            {presetCategories.map(cat => {
+              if (cat.list.length === 0) return null
+              return (
+                <div key={cat.title} style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                  <div style={{ fontSize: '9.5px', color: 'var(--text-dim)', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '0.5px' }}>
+                    {cat.title === 'Standard Reference' && '🎚️ '}
+                    {cat.title === 'Genre & Vibes' && '🎵 '}
+                    {cat.title === 'Special & Acoustic' && '🍃 '}
+                    {cat.title === 'Custom Tuned Presets' && '⚙️ '}
+                    {cat.title}
+                  </div>
+                  <div style={{ display: 'flex', gap: '4px', overflowX: 'auto', paddingBottom: '2px', scrollbarWidth: 'none' }} className="no-scrollbar">
+                    {cat.list.map(name => (
+                      <button key={name} className={`preset-btn ${activePreset === name ? 'active' : ''}`}
+                        onClick={() => applyPreset(name)}
+                        style={{
+                          fontSize: '10.5px',
+                          padding: '4px 8px',
+                          textTransform: 'uppercase',
+                          whiteSpace: 'nowrap',
+                          flexShrink: 0
+                        }}>
+                        {name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
         {/* Spatial DSP Audio FX knobs */}
         <div style={{ background: 'rgba(255,255,255,0.02)', padding: '10px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.03)' }}>
           <div style={{ fontSize: 12.5, color: 'var(--text-dim)', fontWeight: 600, marginBottom: 8 }}>Spatial Sound Effects</div>
@@ -2868,7 +3606,7 @@ export default function Home() {
                 <input
                   type="range" min={0} max={100} value={reverbLevel}
                   onChange={e => updateReverb(+e.target.value, reverbPreset)}
-                  style={{ width: '100%', accentColor: 'var(--accent)', height: '3px', cursor: 'pointer' }}
+                  className="premium-slider"
                 />
               </div>
 
@@ -2880,7 +3618,7 @@ export default function Home() {
                 <input
                   type="range" min={0} max={100} value={echoLevel}
                   onChange={e => setEchoLevel(+e.target.value)}
-                  style={{ width: '100%', accentColor: 'var(--accent2)', height: '3px', cursor: 'pointer' }}
+                  className="premium-slider accent2"
                 />
               </div>
             </div>
@@ -2895,7 +3633,7 @@ export default function Home() {
                 <input
                   type="range" min={0} max={100} value={bassBoost}
                   onChange={e => setBassBoost(+e.target.value)}
-                  style={{ width: '100%', accentColor: 'var(--accent2)', height: '3px', cursor: 'pointer' }}
+                  className="premium-slider accent2"
                 />
               </div>
 
@@ -2907,7 +3645,7 @@ export default function Home() {
                 <input
                   type="range" min={0} max={100} value={vocalClarity}
                   onChange={e => setVocalClarity(+e.target.value)}
-                  style={{ width: '100%', accentColor: 'var(--accent)', height: '3px', cursor: 'pointer' }}
+                  className="premium-slider"
                 />
               </div>
             </div>
@@ -2933,72 +3671,70 @@ export default function Home() {
                 </select>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--text-dim)', letterSpacing: '0.3px', whiteSpace: 'nowrap' }}>3D LOUDNESS</span>
-                <button
-                  onClick={() => setLoudness(!loudness)}
-                  style={{
-                    width: '32px', height: '16px', borderRadius: '10px',
-                    background: loudness ? 'var(--accent)' : 'rgba(255,255,255,0.1)',
-                    position: 'relative', border: 'none', cursor: 'pointer', transition: 'background 0.3s',
-                    flexShrink: 0
-                  }}
-                >
-                  <div style={{
-                    width: '12px', height: '12px', borderRadius: '50%', background: '#fff',
-                    position: 'absolute', top: '2px', left: loudness ? '18px' : '2px', transition: 'left 0.3s'
-                  }} />
-                </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--text-dim)', letterSpacing: '0.3px', whiteSpace: 'nowrap' }}>MR MODE</span>
+                  <button
+                    onClick={() => {
+                      setIsMrMode(!isMrMode)
+                      if (!isMrMode) speakResponse("보컬 제거 MR 모드를 활성화합니다.")
+                      else speakResponse("MR 모드를 해제합니다.")
+                    }}
+                    style={{
+                      width: '32px', height: '16px', borderRadius: '10px',
+                      background: isMrMode ? '#ef4444' : 'rgba(255,255,255,0.1)',
+                      position: 'relative', border: 'none', cursor: 'pointer', transition: 'background 0.3s',
+                      flexShrink: 0
+                    }}
+                  >
+                    <div style={{
+                      width: '12px', height: '12px', borderRadius: '50%', background: '#fff',
+                      position: 'absolute', top: '2px', left: isMrMode ? '18px' : '2px', transition: 'left 0.3s'
+                    }} />
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--text-dim)', letterSpacing: '0.3px', whiteSpace: 'nowrap' }}>3D LOUDNESS</span>
+                  <button
+                    onClick={() => setLoudness(!loudness)}
+                    style={{
+                      width: '32px', height: '16px', borderRadius: '10px',
+                      background: loudness ? 'var(--accent)' : 'rgba(255,255,255,0.1)',
+                      position: 'relative', border: 'none', cursor: 'pointer', transition: 'background 0.3s',
+                      flexShrink: 0
+                    }}
+                  >
+                    <div style={{
+                      width: '12px', height: '12px', borderRadius: '50%', background: '#fff',
+                      position: 'absolute', top: '2px', left: loudness ? '18px' : '2px', transition: 'left 0.3s'
+                    }} />
+                  </button>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* EQ & Sound Presets combined */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <div style={{ fontSize: 12.5, color: 'var(--text-dim)', fontWeight: 600, display: 'flex', justifyContent: 'space-between' }}>
-            <span>EQ & Tuning Presets (12 Profiles)</span>
-            <span style={{ fontSize: '10px', color: 'var(--accent)' }}>ALL ACTIVE</span>
-          </div>
-          <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '8px',
-            background: 'rgba(0,0,0,0.25)',
-            padding: '8px',
-            borderRadius: '10px',
-            border: '1px solid var(--panel-border)'
-          }}>
-            {presetCategories.map(cat => {
-              if (cat.list.length === 0) return null
-              return (
-                <div key={cat.title} style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                  <div style={{ fontSize: '9.5px', color: 'var(--text-dim)', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '0.5px' }}>{cat.title}</div>
-                  <div style={{ display: 'flex', gap: '4px', overflowX: 'auto', paddingBottom: '2px', scrollbarWidth: 'none' }} className="no-scrollbar">
-                    {cat.list.map(name => (
-                      <button key={name} className={`preset-btn ${activePreset === name ? 'active' : ''}`}
-                        onClick={() => applyPreset(name)}
-                        style={{
-                          fontSize: '10.5px',
-                          padding: '4px 8px',
-                          textTransform: 'uppercase',
-                          whiteSpace: 'nowrap',
-                          flexShrink: 0
-                        }}>
-                        {name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-
         {/* Live Karaoke Synced Scrolling Lyrics with AI Generator */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1, minHeight: '160px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1, minHeight: '110px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 12.5, color: 'var(--text-dim)', fontWeight: 600 }}>Live Karaoke Synced Lyrics</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: 12.5, color: 'var(--text-dim)', fontWeight: 600 }}>Live Karaoke Synced Lyrics</span>
+              <button
+                onClick={() => setIsTtsNarratorEnabled(!isTtsNarratorEnabled)}
+                style={{
+                  background: 'rgba(255,255,255,0.05)', border: 'none', cursor: 'pointer',
+                  color: isTtsNarratorEnabled ? 'var(--accent)' : 'rgba(255,255,255,0.3)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: '20px', height: '20px', borderRadius: '4px', padding: 0,
+                  transition: 'all 0.2s'
+                }}
+                title={isTtsNarratorEnabled ? "Mute AI Lyric Narration" : "Enable AI Lyric Voice Narration"}
+              >
+                {isTtsNarratorEnabled ? <Volume2 size={11} /> : <VolumeX size={11} />}
+              </button>
+            </div>
             <button
               onClick={generateAiLyrics}
               disabled={isGeneratingLyrics}
@@ -3009,20 +3745,71 @@ export default function Home() {
             </button>
           </div>
           
-          {generatedTracks[track.id] || isGeneratingLyrics ? (
-            <div ref={lyricsContainerRef} className="lyrics-scroller" style={{ flex: 1, height: 'auto', maxHeight: '180px' }}>
-              {track.lyrics.map((line, i) => (
-                <div key={i} className={`lyrics-line ${i === activeLyricIndex ? 'active' : ''}`}>
-                  {line}
-                </div>
-              ))}
+          {isGeneratingLyrics ? (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              gap: '8px',
+              padding: '12px',
+              background: 'rgba(0,0,0,0.4)',
+              border: '1.5px solid var(--panel-border)',
+              borderRadius: '10px',
+              flex: 1,
+              fontFamily: '"JetBrains Mono", monospace'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '10.5px', color: 'var(--accent)', fontWeight: 800 }}>[AI AUDIO SPECTRUM ANALYSIS]</span>
+                <span style={{ fontSize: '10.5px', color: 'var(--text-dim)', animation: 'pulse 1s infinite' }}>● SCANNING</span>
+              </div>
+              <div style={{ fontSize: '9.5px', color: 'rgba(255,255,255,0.75)', lineHeight: 1.4, display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                <div>&gt; CONNECTING WEB AUDIO ANALYSER... DONE</div>
+                <div>&gt; FILTERING VOCAL FORMANT BAND (300Hz-3.4kHz)... ACTIVE</div>
+                <div>&gt; DECODING AUDIO BUFFER & METADATA... {track.src.startsWith('data:') || track.src.startsWith('blob:') ? 'LOCAL IMPORT' : 'CLOUD STREAM'}</div>
+                <div style={{ color: 'var(--accent2)', fontWeight: 700 }}>&gt; RUNNING NEURAL SPEECH-TO-TEXT DECODER...</div>
+              </div>
+              <div style={{ height: '5px', background: 'rgba(255,255,255,0.05)', borderRadius: '3px', overflow: 'hidden', marginTop: '4px', position: 'relative' }}>
+                <div style={{
+                  height: '100%',
+                  width: '100%',
+                  background: 'linear-gradient(90deg, var(--accent) 0%, var(--accent2) 100%)',
+                  animation: 'shimmer 1.8s infinite linear',
+                  transformOrigin: 'left',
+                }} />
+              </div>
+            </div>
+          ) : track.lyrics && track.lyrics.length > 0 ? (
+            <div ref={lyricsContainerRef} className="lyrics-scroller" style={{ flex: 1, height: '160px', maxHeight: '160px' }}>
+              {parsedLyrics.map((item, i) => {
+                const activeBlockIndex = Math.floor(activeLyricIndex / 3);
+                const currentBlockIndex = Math.floor(i / 3);
+                const isCurrentBlock = activeBlockIndex === currentBlockIndex;
+                const isCurrentLine = i === activeLyricIndex;
+                
+                const intensity = isCurrentLine ? getVocalIntensity() : 0;
+                // Add a very subtle glow based on vocal intensity, without large scale transforms
+                const textGlow = intensity * 4;
+                
+                return (
+                  <div
+                    key={i}
+                    className={`lyrics-line ${isCurrentBlock ? 'active-block' : ''}`}
+                    style={isCurrentLine ? { textShadow: `0 0 ${textGlow}px rgba(255,255,255,0.8)` } : undefined}
+                  >
+                    <span style={{ flex: 1, textAlign: 'center' }}>{item.text}</span>
+                    <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.15)', width: '30px', textAlign: 'right', fontFamily: 'monospace' }}>
+                      {formatTime(item.time)}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           ) : (
-            <div className="lyrics-scroller" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '14px', background: 'rgba(0,0,0,0.25)', border: '1px dashed var(--panel-border)', borderRadius: '12px', flex: 1, height: 'auto', maxHeight: '180px' }}>
+            <div className="lyrics-scroller" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '14px', background: 'rgba(0,0,0,0.25)', border: '1px dashed var(--panel-border)', borderRadius: '12px', flex: 1, height: '160px', maxHeight: '160px' }}>
               <Sparkles size={20} style={{ color: 'var(--accent)', marginBottom: 8, opacity: 0.6 }} />
-              <span style={{ fontSize: '12.5px', color: 'var(--text-dim)', fontWeight: 600, lineHeight: 1.5 }}>
-                곡의 주파수 분위기 매칭 대기 중<br/>
-                <span style={{ fontSize: '10.5px', color: 'rgba(255,255,255,0.3)', fontWeight: 500, marginTop: '4px', display: 'inline-block' }}>위 [AI Synthesize] 버튼을 누르시면 실시간 AI 가사가 생성됩니다.</span>
+              <span style={{ fontSize: '13px', color: 'var(--text-dim)', fontWeight: 600, lineHeight: 1.5 }}>
+                곡의 AI 보컬 분석 대기 중<br/>
+                <span style={{ fontSize: '10.5px', color: 'rgba(255,255,255,0.3)', fontWeight: 500, marginTop: '4px', display: 'inline-block' }}>위 [AI Synthesize] 버튼을 누르면 오디오 스캔 및 가사 스크립트 생성이 시작됩니다.</span>
               </span>
             </div>
           )}

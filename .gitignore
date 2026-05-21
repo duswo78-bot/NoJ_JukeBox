@@ -34,3 +34,16 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Audio files (too large for GitHub)
+*.mp3
+*.wav
+*.flac
+*.ogg
+
+# Backup & scratch
+/backup/
+/scratch/
+
+# Screenshots
+*.png

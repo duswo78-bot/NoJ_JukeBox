@@ -32,16 +32,16 @@
 }
 
 [data-mode="TAPE"] {
-  --bg: #0d0f11;
-  --panel: #14171a;
-  --panel-border: #283038;
-  --accent: #a3b8cc;
-  --accent2: #dbe4ec;
-  --text: #f0f4f8;
-  --text-dim: #7a8b99;
-  --knob: #869ab3;
-  --btn-active-bg: conic-gradient(from 0deg, #f0f4f8 0deg, #cbd5e1 25deg, #94a3b8 50deg, #f0f4f8 90deg, #475569 125deg, #cbd5e1 150deg, #64748b 180deg, #94a3b8 210deg, #475569 240deg, #f0f4f8 270deg, #64748b 300deg, #f0f4f8 330deg, #f0f4f8 360deg);
-  --btn-active-text: #1e293b;
+  --bg: #111316;
+  --panel: #1a1c20;
+  --panel-border: #3a4048;
+  --accent: #a9b5c2;
+  --accent2: #d6deeb;
+  --text: #eef2f6;
+  --text-dim: #8492a0;
+  --knob: #a9b5c2;
+  --btn-active-bg: conic-gradient(from 0deg, #eef2f6 0deg, #cdd5df 25deg, #a9b5c2 50deg, #eef2f6 90deg, #6b7a8a 125deg, #cdd5df 150deg, #8492a0 180deg, #a9b5c2 210deg, #6b7a8a 240deg, #eef2f6 270deg, #8492a0 300deg, #eef2f6 330deg, #eef2f6 360deg);
+  --btn-active-text: #0b0d0f;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -87,17 +87,17 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 24px;
+  font-size: 34px;
   font-weight: 900;
   letter-spacing: -0.5px;
 }
 
 .logo .ai-badge {
-  font-size: 12.5px;
+  font-size: 18px;
   font-weight: 800;
   color: #000;
   background: var(--accent);
-  padding: 3px 8px;
+  padding: 4px 10px;
   border-radius: 6px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -146,8 +146,8 @@ body {
   grid-row: 2;
   background: rgba(0, 0, 0, 0.25);
   border-right: 1px solid var(--panel-border);
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: auto 1fr auto auto;
   padding: 16px 20px;
   gap: 12px;
   overflow: hidden;
@@ -161,9 +161,9 @@ body {
   border-left: 1px solid var(--panel-border);
   display: flex;
   flex-direction: column;
-  padding: 20px;
-  gap: 16px;
-  overflow-y: auto;
+  padding: 12px 16px;
+  gap: 10px;
+  overflow-y: hidden;
   transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1), width 0.4s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.4s ease, padding 0.4s ease;
   width: 440px;
   transform: translateX(0);
@@ -220,7 +220,7 @@ body {
 
 /* ── UI Styling Elements ── */
 .section-label {
-  font-size: 12.5px;
+  font-size: 18px;
   font-weight: 800;
   letter-spacing: 2px;
   color: var(--accent);
@@ -256,21 +256,27 @@ body {
 .playlist-item {
   display: flex;
   flex-direction: column;
-  padding: 10px 12px;
-  border-radius: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
   cursor: pointer;
-  transition: background 0.2s, transform 0.1s;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   border-left: 3px solid transparent;
-  margin-bottom: 4px;
+  margin-bottom: 3px;
+  background: rgba(255, 255, 255, 0.01);
+  border: 1px solid rgba(255, 255, 255, 0.02);
 }
 
 .playlist-item:hover {
-  background: rgba(255,255,255,0.03);
+  background: rgba(255,255,255,0.04);
+  border-color: rgba(255, 255, 255, 0.06);
+  transform: translateX(2px);
 }
 
 .playlist-item.active {
-  background: rgba(220,163,52,0.08);
-  border-left-color: var(--accent);
+  background: linear-gradient(90deg, rgba(220,163,52,0.08) 0%, rgba(220,163,52,0.01) 100%);
+  border-left: 3px solid var(--accent);
+  border-color: rgba(220, 163, 52, 0.15) rgba(220, 163, 52, 0.05) rgba(220, 163, 52, 0.05) rgba(220, 163, 52, 0.15);
+  box-shadow: inset 2px 0 8px rgba(220, 163, 52, 0.03);
 }
 
 /* ── Hardware-Style Media Deck ── */
@@ -317,12 +323,13 @@ body {
   border: 2px solid #2b1f1a;
   box-shadow: 0 15px 40px rgba(0,0,0,0.85), inset 0 0 60px rgba(0,0,0,0.95);
   display: grid;
-  grid-template-columns: 1.25fr 1fr;
+  grid-template-columns: 1fr 1.35fr;
   padding: 16px 20px;
   gap: 20px;
   align-items: center;
   justify-content: center;
-  min-height: 340px;
+  height: 100%;
+  min-height: 0px;
   /* Dark Wooden Studio Rack backplane for LP Vinyl mode */
   background: 
     radial-gradient(circle at 40% 50%, rgba(220, 163, 52, 0.1) 0%, rgba(0,0,0,0) 60%),
@@ -343,19 +350,20 @@ body {
 }
 
 [data-mode="TAPE"] .media-viewport {
-  border-color: #2b1d16;
-  /* Retro Studio sound-absorption acoustic egg-foam wall texture for Cassette */
+  border-color: #4a535c;
+  /* Brushed Silver/Aluminum metal texture for Cassette Deck */
   background: 
-    radial-gradient(circle at 40% 50%, rgba(229, 143, 26, 0.1) 0%, rgba(0,0,0,0) 60%),
-    radial-gradient(circle at 80% 50%, rgba(229, 143, 26, 0.06) 0%, rgba(0,0,0,0) 50%),
-    repeating-linear-gradient(45deg, #0f0a08 0px, #0f0a08 4px, #150f0b 5px, #0f0a08 6px),
-    linear-gradient(180deg, #16100c 0%, #080504 100%);
+    radial-gradient(circle at 40% 50%, rgba(200, 210, 220, 0.1) 0%, rgba(0,0,0,0) 65%),
+    radial-gradient(circle at 80% 50%, rgba(200, 210, 220, 0.05) 0%, rgba(0,0,0,0) 50%),
+    repeating-linear-gradient(90deg, #181a1e 0px, #181a1e 2px, #202328 3px, #181a1e 4px),
+    linear-gradient(180deg, #24282d 0%, #0f1114 100%);
 }
 
 /* ──── 3D Album Cover Flow Viewport ──── */
 .slot-machine-bay {
   position: relative;
-  height: 330px;
+  height: 100%;
+  max-height: 295px;
   width: 100%;
   overflow: hidden;
   border-radius: 14px;
@@ -384,8 +392,8 @@ body {
 /* Individual Cover Flow Card */
 .cover-card {
   position: absolute;
-  width: 145px;
-  height: 145px;
+  width: 140px;
+  height: 140px;
   border-radius: 8px;
   box-shadow: 0 15px 35px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.08);
   transform-style: preserve-3d;
@@ -458,7 +466,8 @@ body {
 .deck-chassis {
   position: relative;
   width: 100%;
-  max-width: 500px;
+  max-width: 442px;
+  max-height: 100%;
   aspect-ratio: 3 / 2;
   display: flex;
   align-items: center;
@@ -876,7 +885,7 @@ body {
   align-items: center;
   gap: 12px;
   font-family: 'JetBrains Mono', monospace;
-  font-size: 13px;
+  font-size: 15.5px;
   color: var(--text-dim);
 }
 
@@ -964,7 +973,7 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  width: 100px;
+  width: 240px;
 }
 
 /* ── Live Karaoke Lyrics Syncer ── */
@@ -973,44 +982,75 @@ body {
   border: 1px solid var(--panel-border);
   border-radius: 12px;
   padding: 12px;
-  height: 110px;
+  height: 160px;
   overflow-y: auto;
-  scroll-behavior: smooth;
+  position: relative;
+}
+
+/* Elegant Scrollbar for Lyrics */
+.lyrics-scroller::-webkit-scrollbar {
+  width: 6px;
+}
+.lyrics-scroller::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 10px;
+}
+.lyrics-scroller::-webkit-scrollbar-thumb {
+  background: rgba(220, 163, 52, 0.3);
+  border-radius: 10px;
+}
+.lyrics-scroller::-webkit-scrollbar-thumb:hover {
+  background: rgba(220, 163, 52, 0.6);
 }
 
 .lyrics-line {
-  font-size: 14px;
-  line-height: 2;
-  text-align: center;
-  color: var(--text-dim);
-  transition: all 0.3s ease;
-  transform: scale(0.96);
+  font-size: 13px;
+  line-height: 1.8;
+  color: rgba(255, 255, 255, 0.4);
+  transition: all 0.6s ease;
+  padding: 6px 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
+.lyrics-line.active-block {
+  color: rgba(255, 255, 255, 0.95);
+  text-shadow: 0 0 8px rgba(220, 163, 52, 0.2);
+  font-weight: 500;
+}
 .lyrics-line.active {
-  color: var(--accent2);
-  font-weight: 700;
-  font-size: 16px;
-  transform: scale(1.02);
-  text-shadow: 0 0 10px rgba(246,200,108,0.25);
+  color: var(--accent);
+  font-weight: 800;
+  font-size: 15px;
+  transform: scale(1.04);
+  text-shadow: 0 0 12px rgba(220,163,52,0.4);
 }
 
 /* ── EQ Presets and Save Buttons ── */
 .preset-btn {
   background: rgba(255,255,255,0.03);
-  border: 1px solid var(--panel-border);
+  border: 1px solid rgba(255,255,255,0.08);
   color: var(--text-dim);
   border-radius: 6px;
   cursor: pointer;
-  transition: all 0.2s;
+  font-family: inherit;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.preset-btn:hover, .preset-btn.active {
-  background: var(--accent);
-  color: #000;
-  font-weight: 700;
+.preset-btn:hover {
+  background: rgba(255,255,255,0.08);
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.preset-btn.active {
+  background: linear-gradient(135deg, var(--accent) 0%, rgba(220,163,52,0.85) 100%);
+  color: #000 !important;
+  font-weight: 800;
   border-color: var(--accent);
-  box-shadow: 0 2px 8px rgba(220,163,52,0.25);
+  box-shadow: 0 0 10px rgba(220, 163, 52, 0.4), inset 0 1px 0 rgba(255,255,255,0.4);
+  text-shadow: 0 0.5px 1px rgba(255,255,255,0.5);
 }
 
 /* ── 10-Band EQ & RTA Spectrum Style ── */
@@ -1065,7 +1105,7 @@ body {
   border-radius: 8px;
   padding: 8px 12px;
   color: #fff;
-  font-size: 15px;
+  font-size: 17px;
   outline: none;
   margin-bottom: 12px;
 }
@@ -1124,7 +1164,7 @@ body {
   top: 42.77%;
   left: 41.28%;
   transform: translate(-50%, -50%);
-  width: 42.5%;
+  width: 44.5%;
   aspect-ratio: 1 / 1;
   border-radius: 50%;
   z-index: 2;
@@ -1141,15 +1181,13 @@ body {
   height: 100%;
   border-radius: 50%;
   background: radial-gradient(circle, 
-    #10151c 0%, 
-    #1f2a3a 10%, 
-    #324258 20%, 
-    #222f3f 45%, 
-    #141c25 50%, 
-    #304058 70%, 
-    #10151c 100%);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: inset 0 0 12px rgba(0,0,0,0.9);
+    #f8fafc 0%, 
+    #cbd5e1 25%, 
+    #94a3b8 50%, 
+    #e2e8f0 75%, 
+    #f8fafc 100%);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  box-shadow: inset 0 0 8px rgba(0,0,0,0.5);
   overflow: hidden;
 }
 
@@ -1171,6 +1209,7 @@ body {
   mix-blend-mode: screen;
   pointer-events: none;
   opacity: 0.95;
+  z-index: 5;
 }
 
 /* Grooves on the CD data layer */
@@ -1207,7 +1246,7 @@ body {
 /* Album cover printed on the CD center label - Expanded size for premium high-fidelity look */
 .cd-album-art {
   position: absolute;
-  inset: 6%;
+  inset: 1%;
   border-radius: 50%;
   border: 1.5px solid rgba(255, 255, 255, 0.08);
   overflow: hidden;
@@ -1221,7 +1260,7 @@ body {
   inset: 43%;
   border-radius: 50%;
   background: #030508;
-  border: 2.5px solid #141b25;
+  border: 2.5px solid #cbd5e1; /* silver border */
   box-shadow: inset 0 2px 5px rgba(0,0,0,0.95);
   z-index: 4;
 }
@@ -1336,8 +1375,8 @@ body {
 
 /* Vinyl disc flyer */
 .flight-lp-record {
-  width: 250px;
-  height: 250px;
+  width: 225px;
+  height: 225px;
   border-radius: 50%;
   background: radial-gradient(circle, #1a1613 0%, #0d0a08 30%, #15110e 31%, #020101 60%, #1c1815 61%, #000000 100%);
   border: 1px solid rgba(255,255,255,0.06);
@@ -1370,11 +1409,11 @@ body {
 
 /* CD flyer */
 .flight-cd-disc {
-  width: 220px;
-  height: 220px;
+  width: 208px;
+  height: 208px;
   border-radius: 50%;
-  background: radial-gradient(circle, #0e1218 0%, #1e2838 40%, #080c10 100%);
-  border: 1px solid rgba(255,255,255,0.08);
+  background: radial-gradient(circle, #f8fafc 0%, #cbd5e1 45%, #94a3b8 75%, #f8fafc 100%);
+  border: 1px solid rgba(255,255,255,0.35);
   box-shadow: 0 10px 25px rgba(0,0,0,0.8);
   display: flex;
   align-items: center;
@@ -1390,8 +1429,8 @@ body {
 }
 
 .flight-cd-label {
-  width: 88%;
-  height: 88%;
+  width: 98%;
+  height: 98%;
   border-radius: 50%;
   border: 1px solid rgba(255,255,255,0.08);
   overflow: hidden;
@@ -1400,6 +1439,17 @@ body {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+/* Spindle hole for flying CD */
+.flight-cd-spindle {
+  position: absolute;
+  inset: 43%;
+  border-radius: 50%;
+  background: #030508;
+  border: 2px solid #cbd5e1; /* silver border */
+  box-shadow: inset 0 2px 5px rgba(0,0,0,0.95);
+  z-index: 4;
 }
 
 /* Responsive Grid for real-time FFT and analog VU meters */
@@ -1419,8 +1469,8 @@ body {
 
 /* Cassette flyer - Smoked Dark Gray Translucent Casing */
 .flight-tape-cassette {
-  width: 240px;
-  height: 160px;
+  width: 216px;
+  height: 144px;
   background: rgba(30, 32, 36, 0.72); /* Dark gray translucent plastic body with backdrop blur */
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -1686,8 +1736,8 @@ input[type="range"]::-webkit-slider-thumb:active {
 
 /* ──── Brushed Aluminum Circular Player Buttons ──── */
 .btn-transport {
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   /* Lighter, high-contrast brushed finish for better visibility against dark panel */
   background: conic-gradient(from 0deg, #ffffff 0deg, #e6e6e6 25deg, #cfcfcf 50deg, #f8f8f8 90deg, #bcbcbc 125deg, #ffffff 150deg, #a5a5a5 180deg, #e0e0e0 210deg, #b8b8b8 240deg, #fafafa 270deg, #d3d3d3 300deg, #ffffff 330deg, #ffffff 360deg);
@@ -1745,8 +1795,8 @@ input[type="range"]::-webkit-slider-thumb:active {
 }
 
 .btn-play {
-  width: 48px;
-  height: 48px;
+  width: 56px;
+  height: 56px;
   border-radius: 50%;
   background: conic-gradient(from 0deg, #ffffff 0deg, #cbcbcb 25deg, #ababab 50deg, #f8f8f8 90deg, #a5a5a5 125deg, #ffffff 150deg, #828282 180deg, #d3d3d3 210deg, #969696 240deg, #f0f0f0 270deg, #b8b8b8 300deg, #ffffff 330deg, #ffffff 360deg);
   border: 1.8px solid rgba(0,0,0,0.35);
@@ -1783,7 +1833,7 @@ input[type="range"]::-webkit-slider-thumb:active {
 /* Upgraded High-End Media Selector Deck styling overrides */
 .deck-btn {
   padding: 10px 18px !important;
-  font-size: 13.5px !important;
+  font-size: 15.5px !important;
   font-weight: 800 !important;
   border-radius: 10px !important;
   gap: 10px !important;
@@ -1855,55 +1905,133 @@ input[type="range"]::-webkit-slider-thumb:active {
 .waveform-canvas {
   width: 100%;
   min-width: 0px;
-  flex: 1;
-  height: 95px;
+  height: 115px; /* Matched to StereoVUMeters height */
   background: rgba(5, 5, 5, 0.75);
   border-radius: 8px;
   border: 1px solid rgba(255,255,255,0.05);
   box-shadow: inset 0 4px 15px rgba(0,0,0,0.85);
-  transition: height 0.4s ease;
 }
 
 /* Photorealistic Maximize / Fullscreen styling for Jukebox */
-.center-player:fullscreen {
-  padding: 40px 60px !important;
+.app-layout.fullscreen-mode {
+  grid-template-columns: 1fr;
+  grid-template-rows: 64px 1fr;
+  width: 100vw;
+  height: 100vh;
   background: radial-gradient(circle at center, #130f0c 0%, #080504 100%) !important;
+}
+
+[data-mode="CD"] .app-layout.fullscreen-mode {
+  background: radial-gradient(circle at center, #070c14 0%, #030508 100%) !important;
+}
+
+[data-mode="TAPE"] .app-layout.fullscreen-mode {
+  background: radial-gradient(circle at center, #0f1216 0%, #060708 100%) !important;
+}
+
+.app-layout.fullscreen-mode .left-sidebar,
+.app-layout.fullscreen-mode .ai-lab,
+.app-layout.fullscreen-mode .ai-lab-toggle-btn {
+  display: none !important;
+}
+
+.app-layout.fullscreen-mode .center-player {
+  grid-column: 1;
+  grid-row: 2;
+  border-right: none;
+  padding: 30px 0 !important;
   display: flex !important;
   flex-direction: column !important;
   justify-content: center !important;
-  gap: 24px !important;
-  width: 100vw !important;
-  height: 100vh !important;
-  border: none !important;
-  z-index: 99999 !important;
+  gap: 32px !important;
+  width: 92% !important;
+  max-width: 1600px !important;
+  margin: 0 auto !important;
+  height: 100% !important;
+  background: transparent !important;
 }
 
-.center-player:fullscreen .media-viewport {
-  max-height: 520px !important;
-  min-height: 420px !important;
+.app-layout.fullscreen-mode .media-viewport {
+  flex: 1;
+  max-height: 720px !important;
+  min-height: 520px !important;
   grid-template-columns: 1.15fr 1fr !important;
   gap: 40px !important;
 }
 
-.center-player:fullscreen .deck-chassis {
-  max-width: 580px !important;
+.app-layout.fullscreen-mode .deck-chassis {
+  max-width: 800px !important;
 }
 
-.center-player:fullscreen .slot-machine-bay {
-  height: 380px !important;
+.app-layout.fullscreen-mode .slot-machine-bay {
+  height: 100% !important;
+  max-height: 520px !important;
 }
 
-.center-player:fullscreen .cover-card {
-  width: 170px !important;
-  height: 170px !important;
+.app-layout.fullscreen-mode .cover-card {
+  width: 220px !important;
+  height: 220px !important;
 }
 
-.center-player:fullscreen .waveform-canvas {
-  height: 145px !important;
+.app-layout.fullscreen-mode .controls-bar {
+  margin-top: 20px !important;
 }
 
-.center-player:fullscreen .controls-bar {
-  margin-top: 15px !important;
+.app-layout.fullscreen-mode .metering-console-grid {
+  display: none !important;
+}
+
+.playlist-item div:first-child {
+  font-size: 17px !important;
+}
+
+.playlist-item div:last-child {
+  font-size: 14px !important;
+}
+
+/* Premium custom range sliders styling */
+.premium-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  outline: none;
+  position: relative;
+  transition: background 0.3s;
+  cursor: pointer;
+}
+
+.premium-slider:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.premium-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.5);
+  box-shadow: 0 0 0 2px var(--accent), 0 2px 4px rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+  transition: transform 0.1s, box-shadow 0.2s;
+}
+
+.premium-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.25);
+  box-shadow: 0 0 0 3px var(--accent), 0 2px 6px rgba(0, 0, 0, 0.8), 0 0 6px var(--accent);
+}
+
+.premium-slider.accent2::-webkit-slider-thumb {
+  box-shadow: 0 0 0 2px var(--accent2), 0 2px 4px rgba(0, 0, 0, 0.6);
+}
+
+.premium-slider.accent2::-webkit-slider-thumb:hover {
+  transform: scale(1.25);
+  box-shadow: 0 0 0 3px var(--accent2), 0 2px 6px rgba(0, 0, 0, 0.8), 0 0 6px var(--accent2);
 }
 
 
