@@ -58,7 +58,7 @@ pip install numpy faster-whisper edge-tts imageio-ffmpeg
 ### Installation & Execution
 1. **Clone or Navigate to the directory**:
    ```bash
-   cd "c:\Users\djw7ql\OneDrive - Aptiv\Antigravity\AI Jukebox"
+   cd "c:\Users\...\AI Jukebox"
    ```
 
 2. **Install dependencies**:
