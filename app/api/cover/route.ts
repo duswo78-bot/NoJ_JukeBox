@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
 import fs from 'fs/promises';
 
+export const dynamic = 'force-dynamic';
+
 function generateSvgCover(title: string) {
   let hash = 0;
   for (let i = 0; i < title.length; i++) {
