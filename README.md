@@ -1,62 +1,62 @@
 # AI Jukebox 🎵
 
-A modern, interactive web music player featuring physical media visualization (LP, CD, Cassette Tape), Web Audio API integration, and a stunning dark neon UI.
+A premium, interactive web music player combining high-fidelity Web Audio DSP, vintage physical media skins (LP, CD, Cassette Tape), and advanced AI features (AI EQ, AI Lyrics, Neural TTS, and DALL-E Cover Art).
 
-## Features
+---
 
-### 🎨 Physical Media Player with 3 Skins
-- **LP (Vinyl) Mode**: Animated tonearm that moves to the record when playing, with a spinning vinyl disc featuring realistic groove effects
-- **CD Mode**: Rotating CD with rainbow iridescence gradient effects that simulate light reflection
-- **Cassette Tape Mode**: Dual spindles that rotate with tape winding animation based on playback progress
+## 🎨 Major Features
 
-### 🎵 Integrated Media Player
-- **MP3 Playback**: Physical media visualization with background audio visualizer
-- **MP4 Playback**: Seamless transition to video player with ambient light effects
+### 1. Retro-Modern Media Skins (LP, CD, Cassette)
+* **LP (Vinyl) Mode**: Features an animated tonearm that slides to the vinyl platter on play, a spinning disc with realistic groove reflection, and analog dust crackle controls.
+* **CD Mode**: Rotating CD disc with dynamic iridescent gradient effects that simulate laser light reflections.
+* **Cassette Tape Mode**: Premium Silver-Gray metal deck styling. Dual rotating spindles and tape winding reels dynamically scale their rotation speed based on playback position.
 
-### 🎚️ Web Audio API DSP
-- **3-Band EQ Controller**: Bass, Mid, and Treble adjustment sliders
-- **Vintage Radio Preset**: Lo-Fi effect with reduced bandwidth for City Pop vibes
-- **Live Concert Preset**: Reverb effect for enhanced spatial audio
+### 2. AI Sound Lab & 10-Band EQ DSP
+* **10-Band EQ Graphic Fader**: Adjust bands from 31Hz to 16kHz with an embedded Real-Time Analyzer (RTA) spectrum canvas rendering behind the sliders.
+* **AI Automatic EQ (Auto Optimization)**: Analyzes track audio using a Pink Noise frequency matching algorithm. Shows a modern, overlay spinner reading **"ANALYZING SPECTRUM..."** in the UI during analysis before auto-applying the optimized EQ profile.
+* **Spatial Audio Presets**: Instantly shape the audio space using Reverb/Convolver nodes (Normal, Studio, Stage, Concert, Hall, Cathedral).
+* **EQ Tuning Presets**: Quick fader configurations (Classic Rock, Dance Electronic, Jazz Lounge, Vocal Clear, Bass Boost, Custom).
 
-### 📊 Smart Playback UI
-- **Metadata Panel**: Displays BPM, genre, mood tags, and track type
-- **Scrolling Lyrics**: Synchronized lyrics display
-- **Audio Visualizer**: Real-time canvas-based frequency visualization
+### 3. AI Coprocessor Features
+* **AI Generative Lyrics**: Triggers Demucs vocal separation and Whisper audio transcription on the Python backend to auto-generate and time-sync scrolling lyrics.
+* **AI Voice Narration (TTS)**: Uses a natural Korean Neural voice (Edge TTS) to automatically narrate track summaries, mood analysis, and genre intros when a track loads.
+* **AI Cover Art Generator (DALL-E)**: Generates vintage-style album covers based on track title, artist, and genre.
 
-### 🎯 UI/UX Design
-- **Dark Theme**: Modern showcase meets retro vinyl bar aesthetic
-- **Neon Accents**: Cyan, purple, pink, and orange color scheme
-- **Responsive Layout**: Three-panel design with playlist, main player, and controls
-- **Smooth Animations**: Framer Motion powered transitions
+### 4. High-Resolution Audio Visualizer
+* A high-fidelity, real-time FFT spectrum visualizer floating behind the tape/record player deck for maximum visual engagement.
 
-## Tech Stack
+### 5. Premium Layout & Scaling
+* Responsive design that supports standard layout and fully-immersive **Fullscreen Mode** which auto-scales player elements using dynamic CSS bounds to fit any high-res monitor.
 
-- **Framework**: Next.js 14 with App Router
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS
-- **Animations**: Framer Motion
-- **Icons**: Lucide React
-- **Audio**: Web Audio API, HTML5 Audio/Video
-- **Visualization**: HTML5 Canvas
+---
 
-## Prerequisites
+## ⚙️ Tech Stack
 
-Before running this project, you need to have Node.js and npm installed on your system.
+* **Frontend**: Next.js 14 (App Router), TypeScript, Vanilla CSS (Premium styling, Glassmorphism, animations).
+* **DSP / Audio**: Web Audio API (BiquadFilterNode chain, GainNode, ConvolverNode), HTML5 Audio.
+* **Backend Bridge**: Next.js API Routes (`/api/auto-eq`, `/api/synthesize`, `/api/tts`, `/api/cover`) executing localized Python script processes.
+* **Python AI Helpers**:
+  * `faster-whisper`: High-performance local transcription.
+  * `numpy`: Fast mathematical frequency analysis.
+  * `edge-tts`: Neural Text-to-Speech synthesis.
 
-### Installing Node.js and npm
+---
 
-1. **Download Node.js**: Visit [https://nodejs.org/](https://nodejs.org/) and download the LTS (Long Term Support) version for Windows.
-2. **Install**: Run the installer and follow the installation wizard.
-3. **Verify Installation**: Open a new terminal/command prompt and run:
-   ```bash
-   node --version
-   npm --version
-   ```
-   If you see version numbers, installation was successful.
+## 🚀 Getting Started
 
-## Installation
+### Prerequisites
+* **Node.js**: Version 18.x or 20.x
+* **Python**: Version 3.10+ (required for AI helper scripts)
+* **FFmpeg**: Must be installed and available in the system path (used by PyTorch/Whisper/Demucs for audio decoding).
 
-1. **Navigate to the project directory**:
+### Python Setup
+Create a virtual environment or install the required libraries globally:
+```bash
+pip install numpy faster-whisper edge-tts imageio-ffmpeg
+```
+
+### Installation & Execution
+1. **Clone or Navigate to the directory**:
    ```bash
    cd "c:\Users\djw7ql\OneDrive - Aptiv\Antigravity\AI Jukebox"
    ```
@@ -66,127 +66,40 @@ Before running this project, you need to have Node.js and npm installed on your 
    npm install
    ```
 
-3. **Run the development server**:
+3. **Run in Development Mode**:
    ```bash
    npm run dev
    ```
+   *The server will boot up (normally on port `http://localhost:3000` or `http://localhost:3001` if 3000 is occupied).*
 
-4. **Open your browser**: Navigate to [http://localhost:3000](http://localhost:3000)
+---
 
-## Project Structure
+## 📂 Project Structure
 
 ```
 AI Jukebox/
 ├── app/
-│   ├── globals.css          # Global styles and custom CSS
-│   ├── layout.tsx           # Root layout with metadata
+│   ├── api/
+│   │   ├── ai/              # AI prompt routing
+│   │   ├── auto-eq/         # Pink Noise EQ analysis endpoint
+│   │   ├── cover/           # DALL-E image generation
+│   │   ├── synthesize/      # Whisper/Demucs lyrics transcription
+│   │   ├── tts/             # Edge TTS voice generation
+│   │   ├── track-metadata/  # Saving .ifx metadata files
+│   │   └── tracks/          # Listing local tracks
+│   ├── globals.css          # Premium neon/dark styling rules
+│   ├── layout.tsx           # Main application shell
 │   └── page.tsx             # Main application page
-├── components/
-│   ├── VinylPlayer.tsx      # LP vinyl player component
-│   ├── CDPlayer.tsx         # CD player component
-│   ├── TapePlayer.tsx       # Cassette tape player component
-│   ├── AudioVisualizer.tsx  # Canvas-based audio visualizer
-│   ├── EQController.tsx     # 3-Band EQ with presets
-│   ├── Playlist.tsx         # Track playlist component
-│   └── MetadataPanel.tsx    # Track info and lyrics display
-├── package.json             # Project dependencies
-├── tsconfig.json            # TypeScript configuration
-├── tailwind.config.ts       # Tailwind CSS configuration
-├── next.config.js           # Next.js configuration
-└── postcss.config.js        # PostCSS configuration
+├── backend/
+│   ├── analyze_eq.py        # Pink Noise EQ optimizer (Python)
+│   ├── generate_lyrics.py   # AI Lyrics generation script (Python)
+│   └── generate_tts.py      # Neural TTS generator (Python)
+├── public/
+│   └── music/               # Track files (.mp3, .mp4, and matching .ifx metadata)
+└── package.json             # NPM dependencies
 ```
 
-## Usage
+---
 
-### Playing Music
-1. Select a track from the playlist on the left sidebar
-2. Click the play button in the center
-3. Switch between LP, CD, and Tape modes using the toggle buttons
-4. Adjust volume using the slider below the controls
-
-### Using the EQ
-1. Click the Settings icon in the top-right to open the controls panel
-2. Adjust Bass, Mid, and Treble sliders
-3. Click preset buttons for Vintage Radio or Live Concert effects
-
-### Viewing Track Info
-1. The right panel displays track metadata (BPM, genre, mood)
-2. Lyrics are displayed in a scrollable container
-3. Mood tags are shown as colorful badges
-
-## Mock Data
-
-The project includes two sample tracks for testing:
-
-- **Neon Nights** by Shine On (샤인온)
-  - Type: MP3
-  - Genre: City Pop
-  - Mood: Retro/Chill
-  - BPM: 105
-  - Preferred Media: LP
-
-- **Midnight Highway** by Unknown
-  - Type: MP4
-  - Genre: Eurodance
-  - Mood: Energetic
-  - BPM: 130
-  - Preferred Media: CD
-
-## Customization
-
-### Adding Your Own Tracks
-Edit the `mockTracks` array in `app/page.tsx` to add your own music:
-
-```typescript
-{
-  id: 3,
-  title: "Your Song",
-  artist: "Artist Name",
-  type: "mp3",
-  genre: "Your Genre",
-  mood: "Your Mood",
-  bpm: 120,
-  mediaPref: "CD",
-  duration: 180,
-  lyrics: ["Line 1", "Line 2", ...]
-}
-```
-
-### Modifying Colors
-Update the color scheme in `tailwind.config.ts`:
-
-```typescript
-colors: {
-  neon: {
-    pink: "#FF006E",
-    cyan: "#00F5FF",
-    purple: "#8B5CF6",
-    orange: "#FF6B35"
-  }
-}
-```
-
-## Building for Production
-
-```bash
-npm run build
-npm start
-```
-
-## Future Enhancements
-
-- [ ] Connect to real audio files
-- [ ] Add more EQ presets
-- [ ] Implement playlist shuffle/repeat
-- [ ] Add keyboard shortcuts
-- [ ] Support for more audio formats
-- [ ] Real-time lyrics synchronization
-- [ ] Save user preferences to localStorage
-
-## License
-
-This project is for personal use and educational purposes.
-
-## Credits
-
-Built with ❤️ using Next.js, Tailwind CSS, and Framer Motion.
+## 🎵 Dynamic Metadata (.ifx)
+Tracks store metadata (BPM, genre, tags, custom lyrics, and auto-generated AI EQ profile gains) inside JSON-formatted `.ifx` files located alongside the audio files in `/public/music/`. The Jukebox reads/writes to these files automatically.
