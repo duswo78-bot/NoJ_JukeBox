@@ -4,11 +4,13 @@ import path from 'path';
 import util from 'util';
 import fs from 'fs';
 
+export const dynamic = 'force-dynamic';
+
 const execAsync = util.promisify(exec);
 
 export async function POST(req: NextRequest) {
   try {
-    const { text } = await req.json();
+    const { text, voice, rate, pitch } = await req.json();
     if (!text) {
       return NextResponse.json({ error: 'Text is required' }, { status: 400 });
     }
@@ -27,7 +29,13 @@ export async function POST(req: NextRequest) {
 
     // Make sure to escape quotes in text for the command line
     const safeText = text.replace(/"/g, '\\"');
-    const command = `python "${scriptPath}" --text "${safeText}" --output "${outputPath}"`;
+    
+    // Sanitize parameters
+    const safeVoice = String(voice || 'ko-KR-SunHiNeural').replace(/[^a-zA-Z0-9-]/g, '');
+    const safeRate = String(rate || '+5%').replace(/[^a-zA-Z0-9%+-]/g, '');
+    const safePitch = String(pitch || '+0Hz').replace(/[^a-zA-Z0-9%+-]/g, '');
+
+    const command = `python "${scriptPath}" --text "${safeText}" --output "${outputPath}" --voice "${safeVoice}" --rate "${safeRate}" --pitch "${safePitch}"`;
     
     await execAsync(command);
 

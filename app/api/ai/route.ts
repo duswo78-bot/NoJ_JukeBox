@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: NextRequest) {
   try {
     const { query, currentTrackName, currentTrackArtist, mediaType, tracks } = await req.json();
@@ -31,7 +33,8 @@ Your behavior:
 5. If the user asks to adjust volume (e.g., mute, louder, quieter, set volume to X), use "set_volume" function.
 6. If the user asks to switch modes (e.g., switch to CD, cassette, LP record), use "change_media_type" function.
 7. If the user asks to go fullscreen or exit fullscreen, use "set_fullscreen" function.
-8. Keep the conversation extremely cool, witty, and brief.`;
+8. If the user asks to create or generate a playlist (e.g., "Create a workout playlist", "신나는 곡들로 플레이리스트 만들어줘"), select appropriate track IDs from the list above and call "create_playlist" with a suitable playlist name and the matching track IDs.
+9. Keep the conversation extremely cool, witty, and brief.`;
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -133,6 +136,25 @@ Your behavior:
                 required: ["environment", "level"]
               }
             }
+          },
+          {
+            type: "function",
+            function: {
+              name: "create_playlist",
+              description: "Create a new custom playlist with a given name containing specific track IDs.",
+              parameters: {
+                type: "object",
+                properties: {
+                  playlist_name: { type: "string", description: "The name of the new playlist." },
+                  track_ids: {
+                    type: "array",
+                    items: { type: "number" },
+                    description: "List of track IDs to add to this playlist."
+                  }
+                },
+                required: ["playlist_name", "track_ids"]
+              }
+            }
           }
         ],
         tool_choice: "auto"
@@ -163,6 +185,8 @@ Your behavior:
         reply = "화면 모드를 전환하겠습니다. 더 넓게 즐겨보세요.";
       } else if (toolNames.includes('set_eq') || toolNames.includes('set_reverb')) {
         reply = "주파수 믹서와 에코 설정을 맞춤형으로 튜닝했습니다.";
+      } else if (toolNames.includes('create_playlist')) {
+        reply = "좋습니다. 요청하신 트랙들을 엄선해서 새로운 커스텀 플레이리스트를 만들어 드렸습니다. 사이드바에서 확인해보시죠!";
       } else {
         reply = "요청하신 대로 기기 설정을 변경하겠습니다.";
       }

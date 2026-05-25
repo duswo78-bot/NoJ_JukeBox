@@ -1156,6 +1156,10 @@ export default function Home() {
   const [repeat, setRepeat]         = useState(false)
   const [shuffle, setShuffle]       = useState(false)
   const [activePlaylist, setActivePlaylist] = useState('Featured')
+  const [playlists, setPlaylists] = useState<string[]>(['Featured', 'Retro Vibes', 'Eurodance Energy', 'Ambient Waves'])
+  const [customPlaylists, setCustomPlaylists] = useState<Record<string, number[]>>({})
+  const [ttsVoiceMode, setTtsVoiceMode] = useState<'sunhi' | 'injoon'>('sunhi')
+  const [ttsEnergyMode, setTtsEnergyMode] = useState<'standard' | 'energetic'>('energetic')
   const [aiQuery, setAiQuery]       = useState('')
   const [aiResponse, setAiResponse] = useState('')
   const [isAiTalking, setIsAiTalking] = useState(false)
@@ -2589,11 +2593,20 @@ export default function Home() {
 
     setIsAiTalking(true);
 
+    const voice = ttsVoiceMode === 'sunhi' ? 'ko-KR-SunHiNeural' : 'ko-KR-InJoonNeural';
+    const rate = ttsEnergyMode === 'energetic' ? '+12%' : '+4%';
+    const pitch = ttsEnergyMode === 'energetic' ? '+6Hz' : '+0Hz';
+
     try {
       const res = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: text.replace(/✦/g, '') })
+        body: JSON.stringify({ 
+          text: text.replace(/✦/g, ''),
+          voice,
+          rate,
+          pitch
+        })
       });
 
       if (!res.ok) throw new Error("Neural TTS failed");
@@ -2660,7 +2673,7 @@ export default function Home() {
     if (!q.trim()) return
     
     setAiQuery('')
-    setAiResponse("분위기를 스캔 중입니다... 어울리는 곡을 찾아볼게요.")
+    setAiResponse("요청하신 내용을 수행 중입니다...")
 
     try {
       const res = await fetch('/api/ai', {
@@ -2682,15 +2695,25 @@ export default function Home() {
         else if (q.includes('편한') || q.includes('힐링') || q.includes('chill')) key = 'chill'
         else if (q.includes('에너지') || q.includes('신나') || q.includes('클럽') || q.includes('dance')) key = 'energy'
         else if (q.includes('우주') || q.includes('몽환') || q.includes('space') || q.includes('mirage')) key = 'space'
+        else if (q.includes('플레이리스트') || q.includes('리스트') || q.includes('playlist') || q.includes('믹스')) key = 'playlist'
 
         const resText = AI_DJ_RESPONSES[key] || AI_DJ_RESPONSES['default']
         setAiResponse(resText)
         speakResponse(resText)
 
         if (key === 'rainy') selectTrack(tracks[0])
-        else if (key === 'chill') selectTrack(tracks[10])
+        else if (key === 'chill') selectTrack(tracks[10] || tracks[1])
         else if (key === 'energy') selectTrack(tracks[1])
         else if (key === 'space') selectTrack(tracks[2])
+        else if (key === 'playlist') {
+          const playlistName = "AI DJ Custom Mix";
+          setPlaylists(prev => prev.includes(playlistName) ? prev : [...prev, playlistName]);
+          setCustomPlaylists(prev => ({
+            ...prev,
+            [playlistName]: [1, 2, 4, 7].filter(id => tracks.some(t => t.id === id))
+          }));
+          setActivePlaylist(playlistName);
+        }
         return;
       }
 
@@ -2739,6 +2762,17 @@ export default function Home() {
           } else if (action.name === 'set_fullscreen') {
              if (action.args.enabled !== undefined) {
                setIsFullscreen(action.args.enabled);
+             }
+          } else if (action.name === 'create_playlist') {
+             const name = action.args.playlist_name || "Custom Mix";
+             const ids = action.args.track_ids;
+             if (name && Array.isArray(ids)) {
+               setPlaylists(prev => prev.includes(name) ? prev : [...prev, name]);
+               setCustomPlaylists(prev => ({
+                 ...prev,
+                 [name]: ids.map(Number)
+               }));
+               setActivePlaylist(name);
              }
           }
         }
@@ -2832,10 +2866,12 @@ export default function Home() {
           const newTrack = updatedTracks.find((t: Track) => t.src.includes(data.filename)) || updatedTracks[updatedTracks.length - 1];
           if (newTrack) {
             selectTrack(newTrack);
+            // Automatically analyze the uploaded track and save EQ profile to its .ifx metadata
+            triggerAutoEq(newTrack.src);
           }
         }
         
-        speakResponse("오디오 트랙이 성공적으로 시스템에 업로드되고 저장되었습니다.");
+        speakResponse("오디오 트랙이 성공적으로 시스템에 업로드되고 저장되었습니다. 인공지능 주파수 분석을 시작합니다.");
       } else {
         throw new Error("Upload failed");
       }
@@ -3225,6 +3261,10 @@ export default function Home() {
   const filteredTracks = useMemo(() => {
     if (activePlaylist === 'Featured') return tracks
     
+    if (customPlaylists[activePlaylist]) {
+      return tracks.filter(t => customPlaylists[activePlaylist].includes(t.id))
+    }
+    
     return tracks.filter(t => {
       const genre = t.genre.toLowerCase()
       const title = t.title.toLowerCase()
@@ -3244,7 +3284,7 @@ export default function Home() {
       }
       return true
     })
-  }, [tracks, activePlaylist])
+  }, [tracks, activePlaylist, customPlaylists])
 
   const progressPct = Math.min(100, (currentTime / Math.max(getDuration(), 1)) * 100)
 
@@ -3350,6 +3390,38 @@ export default function Home() {
               <Sparkles size={16} style={{ color: 'var(--accent)', opacity: 0.9 }} />
             </button>
           </div>
+          
+          <div style={{ display: 'flex', gap: '8px', marginTop: '6px', alignItems: 'center', justifyContent: 'space-between', padding: '0 2px' }}>
+            <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+              <span style={{ fontSize: '9.5px', color: 'var(--text-dim)', fontWeight: 600 }}>Voice:</span>
+              <button
+                onClick={() => { setTtsVoiceMode(ttsVoiceMode === 'sunhi' ? 'injoon' : 'sunhi'); playMechanicalSound('button'); }}
+                style={{
+                  fontSize: '9.5px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+                  color: 'var(--text)', padding: '2px 6px', borderRadius: '4px', cursor: 'pointer', fontWeight: 700
+                }}
+                title="Change DJ voice"
+              >
+                {ttsVoiceMode === 'sunhi' ? 'SunHi 👩 (Clear)' : 'InJoon 👨 (Energetic)'}
+              </button>
+            </div>
+            <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+              <span style={{ fontSize: '9.5px', color: 'var(--text-dim)', fontWeight: 600 }}>Energy:</span>
+              <button
+                onClick={() => { setTtsEnergyMode(ttsEnergyMode === 'energetic' ? 'standard' : 'energetic'); playMechanicalSound('button'); }}
+                style={{
+                  fontSize: '9.5px', background: ttsEnergyMode === 'energetic' ? 'rgba(0, 245, 255, 0.15)' : 'rgba(255,255,255,0.06)',
+                  border: `1px solid ${ttsEnergyMode === 'energetic' ? 'var(--accent)' : 'rgba(255,255,255,0.1)'}`,
+                  color: ttsEnergyMode === 'energetic' ? 'var(--accent)' : 'var(--text)',
+                  padding: '2px 6px', borderRadius: '4px', cursor: 'pointer', fontWeight: 800
+                }}
+                title="Toggle energetic voice style"
+              >
+                {ttsEnergyMode === 'energetic' ? '⚡ Energetic' : '☕ Standard'}
+              </button>
+            </div>
+          </div>
+
           {aiResponse && (
             <div style={{
               fontSize: '13px',
@@ -3373,7 +3445,7 @@ export default function Home() {
         <div>
           <div className="section-label">Playlists</div>
           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-            {PLAYLISTS.map(p => (
+            {playlists.map(p => (
               <button
                 key={p}
                 className={`preset-btn ${activePlaylist === p ? 'active' : ''}`}
@@ -3492,11 +3564,12 @@ export default function Home() {
 
         {/* Offline Audio File Uploader - Moved below Tracks Directory */}
         <div style={{ padding: '4px 0', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '10px' }}>
-          <div className="section-label" style={{ marginBottom: '6px' }}>Drop & Upload MP3</div>
+          <div className="section-label" style={{ marginBottom: '6px' }}>Drop & Upload Audio</div>
           <label className="uploader-box" style={{ display: 'block', padding: '10px' }}>
             <Upload size={16} style={{ margin: '0 auto 4px', color: 'var(--accent)' }} />
-            <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text)' }}>Web MP3 Import</div>
-            <div style={{ fontSize: '9px', color: 'var(--text-dim)', marginTop: '1px' }}>Click to select audio</div>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text)' }}>Import Audio File</div>
+            <div style={{ fontSize: '9.5px', color: 'var(--text-dim)', marginTop: '2px', fontWeight: 600 }}>Click to select audio</div>
+            <div style={{ fontSize: '8px', color: 'var(--accent)', marginTop: '3px', letterSpacing: '0.5px' }}>SUPPORTED: MP3, WAV, FLAC, M4A</div>
             <input type="file" accept="audio/*" onChange={handleFileUpload} style={{ display: 'none' }} />
           </label>
         </div>
