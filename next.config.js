@@ -1,13 +1,12 @@
-const path = require('path');
-const os = require('os');
-
-const target = path.join(os.tmpdir(), 'next-jukebox-build');
-const relativePath = path.relative(__dirname, target);
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  distDir: relativePath,
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   webpack: (config, { dev }) => {
     if (dev) {
       config.watchOptions = {

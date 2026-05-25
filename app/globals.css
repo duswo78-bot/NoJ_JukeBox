@@ -10,6 +10,7 @@
   --panel: #14100c;
   --panel-border: #332213;
   --accent: #dca334;
+  --accent-rgb: 220, 163, 52;
   --accent2: #f6c86c;
   --text: #f6ebd6;
   --text-dim: #99836c;
@@ -23,6 +24,7 @@
   --panel: #0a0f16;
   --panel-border: #142844;
   --accent: #00d2ff;
+  --accent-rgb: 0, 210, 255;
   --accent2: #894eff;
   --text: #eef7ff;
   --text-dim: #5c7e9f;
@@ -36,6 +38,7 @@
   --panel: #1a1c20;
   --panel-border: #3a4048;
   --accent: #a9b5c2;
+  --accent-rgb: 169, 181, 194;
   --accent2: #d6deeb;
   --text: #eef2f6;
   --text-dim: #8492a0;
@@ -251,6 +254,27 @@ body {
 .ai-dj-search:focus {
   border-color: var(--accent);
   box-shadow: 0 0 12px rgba(220,163,52,0.15);
+}
+
+.playlist-tabs button {
+  background: transparent;
+  border: 1px solid var(--panel-border);
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 11px;
+  padding: 6px 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+/* ── UI Responsive Layout Adjustments ── */
+.scale-wrapper {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
 }
 
 .playlist-item {
@@ -493,7 +517,7 @@ body {
   position: absolute;
   top: 49.8%;
   left: 39.5%;
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%) rotate(var(--spin-angle, 0deg));
   width: 59.0%;
   aspect-ratio: 1 / 1;
   border-radius: 50%;
@@ -511,16 +535,14 @@ body {
   box-shadow: 0 4px 15px rgba(0,0,0,0.6), inset 0 0 20px rgba(0,0,0,0.9);
 }
 
-.lp-spindle-hub.spinning {
-  animation: spin-vinyl 3s linear infinite;
-}
+
 
 /* Rotating active track album art label in the record center */
 .lp-center-label {
   position: absolute;
   top: 49.8%;
   left: 39.5%;
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%) rotate(var(--spin-angle, 0deg));
   width: 18.0%;
   aspect-ratio: 1 / 1;
   border-radius: 50%;
@@ -531,9 +553,7 @@ body {
   box-shadow: 0 2px 5px rgba(0,0,0,0.6);
 }
 
-.lp-center-label.spinning {
-  animation: spin-vinyl 3s linear infinite;
-}
+
 
 /* Silver center spindle pin */
 .lp-spindle-pin {
@@ -714,7 +734,7 @@ body {
   position: absolute;
   top: 42.77%;
   left: 41.28%;
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%) rotate(var(--spin-angle, 0deg));
   width: 58.0%;
   aspect-ratio: 1 / 1;
   border-radius: 50%;
@@ -810,7 +830,7 @@ body {
   position: absolute;
   top: calc(52.5% - 3px);
   left: 38.64%;
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%) rotate(var(--spin-angle, 0deg));
   width: 11.6%;
   aspect-ratio: 1 / 1;
   z-index: 2;
@@ -820,19 +840,14 @@ body {
   position: absolute;
   top: calc(52.5% - 3px);
   left: 60.92%;
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%) rotate(var(--spin-angle, 0deg));
   width: 11.6%;
   aspect-ratio: 1 / 1;
   z-index: 2;
   pointer-events: none;
 }
 
-.tape-gear-left.spinning {
-  animation: spin-vinyl 4s linear infinite;
-}
-.tape-gear-right.spinning {
-  animation: spin-vinyl 4s linear infinite;
-}
+
 
 /* Dynamic film progress block visible behind the window */
 .tape-film-progress {
@@ -978,13 +993,13 @@ body {
 
 /* ── Live Karaoke Lyrics Syncer ── */
 .lyrics-scroller {
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(0, 0, 0, 0.45);
   border: 1px solid var(--panel-border);
   border-radius: 12px;
   padding: 12px;
-  height: 160px;
   overflow-y: auto;
   position: relative;
+  min-height: 0;
 }
 
 /* Elegant Scrollbar for Lyrics */
@@ -992,39 +1007,41 @@ body {
   width: 6px;
 }
 .lyrics-scroller::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 10px;
+  background: transparent;
 }
 .lyrics-scroller::-webkit-scrollbar-thumb {
-  background: rgba(220, 163, 52, 0.3);
-  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
 }
 .lyrics-scroller::-webkit-scrollbar-thumb:hover {
-  background: rgba(220, 163, 52, 0.6);
+  background: var(--accent);
 }
 
 .lyrics-line {
   font-size: 13px;
   line-height: 1.8;
-  color: rgba(255, 255, 255, 0.4);
-  transition: all 0.6s ease;
-  padding: 6px 0;
+  color: rgba(255, 255, 255, 0.35);
+  transition: color 0.3s ease, text-shadow 0.3s ease;
+  padding: 6px 8px;
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
 .lyrics-line.active-block {
-  color: rgba(255, 255, 255, 0.95);
-  text-shadow: 0 0 8px rgba(220, 163, 52, 0.2);
+  color: rgba(255, 255, 255, 0.9);
   font-weight: 500;
+  text-shadow: 0 0 6px rgba(var(--accent-rgb), 0.25);
 }
+
 .lyrics-line.active {
-  color: var(--accent);
-  font-weight: 800;
-  font-size: 15px;
-  transform: scale(1.04);
-  text-shadow: 0 0 12px rgba(220,163,52,0.4);
+  color: #fff;
+  font-weight: 700;
+  font-size: 13.5px;
+  text-shadow: 
+    0 0 4px #fff, 
+    0 0 10px rgba(var(--accent-rgb), 0.8), 
+    0 0 20px rgba(var(--accent-rgb), 0.4);
 }
 
 /* ── EQ Presets and Save Buttons ── */
@@ -1163,7 +1180,7 @@ body {
   position: absolute;
   top: 42.77%;
   left: 41.28%;
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%) rotate(var(--spin-angle, 0deg));
   width: 44.5%;
   aspect-ratio: 1 / 1;
   border-radius: 50%;
@@ -1266,18 +1283,6 @@ body {
 }
 
 /* Animations for CD */
-.cd-body.spinning {
-  animation: spin-cd-up 1.8s cubic-bezier(0.4, 0, 1, 1) 1,
-             spin-cd-fast 0.35s linear 1.8s infinite;
-}
-
-.cd-body.stopping {
-  animation: spin-cd-down 2.2s cubic-bezier(0.1, 0.8, 0.3, 1) 1 forwards;
-}
-
-.cd-body.idle {
-  transform: rotate(0deg);
-}
 
 @keyframes spin-cd-up {
   from { transform: rotate(0deg); }
@@ -1485,6 +1490,25 @@ body {
   justify-content: center;
   position: relative;
   overflow: hidden;
+}
+
+.fullscreen-vis-left, .fullscreen-vis-right {
+  position: fixed;
+  top: 90px;
+  height: calc(100vh - 90px);
+  width: 7.5vw;
+  pointer-events: none;
+  z-index: 9999;
+  filter: blur(40px);
+  transform: translate3d(0, 0, 0);
+}
+
+.fullscreen-vis-left {
+  left: 0;
+}
+
+.fullscreen-vis-right {
+  right: 0;
 }
 
 /* Corner Slotted Screws */
@@ -1916,8 +1940,6 @@ input[type="range"]::-webkit-slider-thumb:active {
 .app-layout.fullscreen-mode {
   grid-template-columns: 1fr;
   grid-template-rows: 64px 1fr;
-  width: 100vw;
-  height: 100vh;
   background: radial-gradient(circle at center, #130f0c 0%, #080504 100%) !important;
 }
 
@@ -2033,5 +2055,7 @@ input[type="range"]::-webkit-slider-thumb:active {
   transform: scale(1.25);
   box-shadow: 0 0 0 3px var(--accent2), 0 2px 6px rgba(0, 0, 0, 0.8), 0 0 6px var(--accent2);
 }
+
+
 
 

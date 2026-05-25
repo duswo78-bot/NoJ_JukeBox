@@ -7,7 +7,12 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData();
     const file = formData.get('file') as File;
     const coverBlob = formData.get('coverBlob') as File;
-    const title = formData.get('title') as string || 'Uploaded Track';
+    const originalName = file.name || 'upload.mp3';
+    const filenameWithoutExt = originalName.replace(/\.[^/.]+$/, "");
+    
+    let title = formData.get('title') as string;
+    if (!title || title === 'Uploaded Track' || title === 'Unknown') title = filenameWithoutExt;
+    
     const artist = formData.get('artist') as string || 'Local Upload';
 
     if (!file) {
@@ -17,9 +22,7 @@ export async function POST(req: NextRequest) {
     const buffer = Buffer.from(await file.arrayBuffer());
     
     // Create a safe filename
-    const originalName = file.name || 'upload.mp3';
     const safeName = originalName.replace(/[^a-zA-Z0-9.\-_ ()]/g, '');
-    const filenameWithoutExt = safeName.replace(/\.[^/.]+$/, "");
     
     const audioPath = path.join(process.cwd(), 'public', 'music', safeName);
     const ifxPath = path.join(process.cwd(), 'public', 'music', `${filenameWithoutExt}.ifx`);
@@ -27,7 +30,7 @@ export async function POST(req: NextRequest) {
     // Write the MP3 file to disk
     await fs.writeFile(audioPath, buffer);
 
-    let coverUrl = 'https://images.unsplash.com/photo-1487180142328-054b783fc471?w=300&q=80';
+    let coverUrl = `/api/cover?filename=${encodeURIComponent(safeName)}`;
     if (coverBlob) {
       const coverBuffer = Buffer.from(await coverBlob.arrayBuffer());
       const coverFileName = `${filenameWithoutExt}_cover.jpg`;

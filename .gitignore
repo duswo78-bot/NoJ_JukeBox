@@ -44,6 +44,10 @@ next-env.d.ts
 # Backup & scratch
 /backup/
 /scratch/
+*.bak
 
 # Screenshots
 *.png
+
+# Python cache
+__pycache__/

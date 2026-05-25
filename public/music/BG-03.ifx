@@ -1,0 +1,29 @@
+{
+  "id": 2,
+  "title": "BG-03",
+  "artist": "Unknown Artist",
+  "genre": "Indie",
+  "mood": [
+    "#Discovered"
+  ],
+  "bpm": 100,
+  "key": "C Major",
+  "mediaPref": "LP",
+  "duration": 180,
+  "src": "/music/BG-03.mp3",
+  "lyrics": [],
+  "linerNotes": "An imported offline track loaded directly into the AI Jukebox context.",
+  "coverUrl": "/api/cover?file=BG-03.mp3",
+  "eq": [
+    75,
+    75,
+    51,
+    49,
+    49,
+    45,
+    34,
+    25,
+    25,
+    30
+  ]
+}

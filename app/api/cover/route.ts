@@ -2,6 +2,54 @@ import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
 import fs from 'fs/promises';
 
+function generateSvgCover(title: string) {
+  let hash = 0;
+  for (let i = 0; i < title.length; i++) {
+    hash = title.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const h1 = Math.abs(hash % 360);
+  const h2 = Math.abs((hash * 2) % 360);
+  const s = 60 + Math.abs(hash % 40);
+  const l = 30 + Math.abs((hash * 3) % 40);
+  
+  const c1 = `hsl(${h1}, ${s}%, ${l}%)`;
+  const c2 = `hsl(${h2}, ${s}%, ${Math.max(10, l - 20)}%)`;
+  const c3 = `hsl(${(h1 + 45) % 360}, 80%, 70%)`;
+  const c4 = `hsl(${(h1 + 90) % 360}, 70%, 60%)`;
+
+  return `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400">
+      <defs>
+        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="${c1}" />
+          <stop offset="100%" stop-color="${c2}" />
+        </linearGradient>
+        <filter id="noise">
+          <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"/>
+          <feColorMatrix type="matrix" values="1 0 0 0 0, 0 1 0 0 0, 0 0 1 0 0, 0 0 0 0.12 0" />
+        </filter>
+      </defs>
+      <rect width="400" height="400" fill="url(#bg)" />
+      
+      <!-- Algorithmic abstract shapes -->
+      <circle cx="200" cy="200" r="140" fill="none" stroke="${c3}" stroke-width="1.5" opacity="0.4" />
+      <circle cx="200" cy="200" r="100" fill="none" stroke="${c4}" stroke-width="3" opacity="0.5" stroke-dasharray="10 5" />
+      <path d="M 0 200 Q 100 ${100 + (hash%200)} 200 200 T 400 200" fill="none" stroke="${c3}" stroke-width="4" opacity="0.6" />
+      <path d="M 200 0 L 200 400" fill="none" stroke="#ffffff" stroke-width="1" opacity="0.1" />
+      
+      <rect width="400" height="400" style="pointer-events:none;" filter="url(#noise)" opacity="0.6" />
+      
+      <!-- Text -->
+      <text x="200" y="195" font-family="sans-serif" font-size="26" font-weight="900" fill="#ffffff" text-anchor="middle" dominant-baseline="middle" opacity="0.95" letter-spacing="1.5">
+        ${title.substring(0, 18)}${title.length > 18 ? '...' : ''}
+      </text>
+      <text x="200" y="235" font-family="sans-serif" font-size="12" font-weight="500" fill="#ffffff" text-anchor="middle" opacity="0.6" letter-spacing="4">
+        AI SYNTHESIS
+      </text>
+    </svg>
+  `.trim();
+}
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
@@ -41,8 +89,15 @@ export async function GET(req: NextRequest) {
     await fileHandle.close();
 
     if (bytesRead < 10 || buffer[0] !== 0x49 || buffer[1] !== 0x44 || buffer[2] !== 0x33) {
-      // No ID3v2 tag
-      return NextResponse.redirect('https://images.unsplash.com/photo-1487180142328-054b783fc471?w=300&q=80');
+      // No ID3v2 tag, generate algorithmic SVG cover instead
+      const sanitizedFilenameForSvg = path.basename(filename).replace(/\.[^/.]+$/, "");
+      const svgStr = generateSvgCover(sanitizedFilenameForSvg);
+      return new NextResponse(svgStr, {
+        headers: {
+          'Content-Type': 'image/svg+xml',
+          'Cache-Control': 'public, max-age=86400',
+        }
+      });
     }
 
     const versionMajor = buffer[3];
@@ -129,7 +184,7 @@ export async function GET(req: NextRequest) {
     }
 
     if (foundPic && imgData) {
-      return new NextResponse(imgData, {
+      return new NextResponse(new Uint8Array(imgData), {
         headers: {
           'Content-Type': mimeType,
           'Cache-Control': 'public, max-age=86400',
@@ -137,11 +192,27 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Default if no APIC/PIC frame found
-    return NextResponse.redirect('https://images.unsplash.com/photo-1487180142328-054b783fc471?w=300&q=80');
+
+
+    // Default if no APIC/PIC frame found -> Auto generate algorithmic SVG cover
+    const sanitizedFilenameForSvg = path.basename(filename).replace(/\.[^/.]+$/, "");
+    const svgStr = generateSvgCover(sanitizedFilenameForSvg);
+    return new NextResponse(svgStr, {
+      headers: {
+        'Content-Type': 'image/svg+xml',
+        'Cache-Control': 'public, max-age=86400',
+      }
+    });
 
   } catch (error) {
     console.error("Cover extraction error:", error);
-    return NextResponse.redirect('https://images.unsplash.com/photo-1487180142328-054b783fc471?w=300&q=80');
+    const svgStr = generateSvgCover("Unknown Track");
+    return new NextResponse(svgStr, {
+      headers: {
+        'Content-Type': 'image/svg+xml',
+        'Cache-Control': 'public, max-age=86400',
+      }
+    });
   }
 }
+

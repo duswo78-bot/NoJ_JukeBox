@@ -11,7 +11,7 @@ import {
 type MediaType = 'LP' | 'CD' | 'TAPE'
 
 // Pure JS ID3v2 Metadata & APIC Album Cover Art Parser (Supports ID3v2.2, ID3v2.3, ID3v2.4)
-function parseMp3Metadata(file: File): Promise<{ title?: string; artist?: string; coverUrl?: string }> {
+function parseMp3Metadata(file: File): Promise<{ title?: string; artist?: string; coverUrl?: string; coverBlob?: Blob }> {
   return new Promise((resolve) => {
     const reader = new FileReader();
     reader.onload = function(e) {
@@ -1144,12 +1144,14 @@ function StereoVUMeters({ isPlaying, audioData, onToggleLight, mode }: { isPlayi
 }
 
 export default function Home() {
-  const [tracks, setTracks]         = useState<Track[]>(INITIAL_TRACKS)
-  const [track, setTrack]           = useState<Track>(INITIAL_TRACKS[0])
+  const [tracks, setTracks]         = useState<Track[]>([])
+  const [track, setTrack]           = useState<Track>({
+    id: 1, title: 'No Songs Loaded', artist: 'Please Scan or Add Music', genre: 'None', mood: [], bpm: 100, key: 'C', mediaPref: 'CD', duration: 180, lyrics: [], src: '', linerNotes: ''
+  })
   const [isPlaying, setPlaying]     = useState(false)
-  const [mediaType, setMediaType]   = useState<MediaType>(INITIAL_TRACKS[0].mediaPref)
+  const [mediaType, setMediaType]   = useState<MediaType>('CD')
   const [currentTime, setTime]      = useState(0)
-  const [volume, setVolume]         = useState(0.85)
+  const [volume, setVolume]         = useState(0.40)
   const [muted, setMuted]           = useState(false)
   const [repeat, setRepeat]         = useState(false)
   const [shuffle, setShuffle]       = useState(false)
@@ -1162,6 +1164,24 @@ export default function Home() {
   const [playbackRate, setPlaybackRate] = useState(1.0)
   const [isDraggingSpeed, setIsDraggingSpeed] = useState(false)
   const [isMrMode, setIsMrMode] = useState(false)
+  const [isAiEqEnabled, setIsAiEqEnabled] = useState(true)
+  const [scale, setScale] = useState(1)
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (typeof window === 'undefined') return;
+      const baseWidth = 1920;
+      const baseHeight = 980;
+      const scaleX = window.innerWidth / baseWidth;
+      const scaleY = window.innerHeight / baseHeight;
+      const newScale = Math.min(scaleX, scaleY);
+      setScale(Math.max(0.65, Math.min(2.5, newScale)));
+    };
+    window.addEventListener('resize', handleResize);
+    handleResize();
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const dragStartYRef = useRef<number>(0)
   const dragStartRateRef = useRef<number>(1.0)
   const knobRef = useRef<HTMLDivElement>(null)
@@ -1176,6 +1196,10 @@ export default function Home() {
           if (loadedTracks.length > 0) {
             setTracks(loadedTracks);
             setTrack(loadedTracks[0]);
+            setFocusedTrackId(loadedTracks[0].id);
+            if (loadedTracks[0].mediaPref) {
+              setMediaType(loadedTracks[0].mediaPref);
+            }
           }
         }
       } catch (e) {
@@ -1232,10 +1256,8 @@ export default function Home() {
   }, [])
 
   const toggleFullscreen = () => {
-    const playerEl = document.querySelector('.app-layout')
-    if (!playerEl) return
     if (!document.fullscreenElement) {
-      playerEl.requestFullscreen().then(() => {
+      document.documentElement.requestFullscreen().then(() => {
         setIsFullscreen(true)
       }).catch((err) => {
         console.error("Failed to enter fullscreen:", err)
@@ -1246,22 +1268,7 @@ export default function Home() {
     }
   }
   
-  // Custom states for gradual acceleration/deceleration CD spin
-  const prevPlayingRef = useRef(isPlaying)
-  const [cdSpinClass, setCdSpinClass] = useState('idle')
-  
-  useEffect(() => {
-    if (isPlaying) {
-      setCdSpinClass('spinning')
-    } else if (prevPlayingRef.current && !isPlaying) {
-      setCdSpinClass('stopping')
-      const timer = setTimeout(() => {
-        setCdSpinClass('idle')
-      }, 1800) // matches our stopping animation duration
-      return () => clearTimeout(timer)
-    }
-    prevPlayingRef.current = isPlaying
-  }, [isPlaying])
+  // Custom states for gradual acceleration/deceleration CD spin removed (now using requestAnimationFrame physics)
 
   // 3D Cover Flow active focused card state
   const [focusedTrackId, setFocusedTrackId] = useState<number>(INITIAL_TRACKS[0].id)
@@ -1398,17 +1405,16 @@ export default function Home() {
     handleMrModeChange();
   }, [isMrMode, track.src]);
 
-  // Responsive Collapsible AI Sound Lab Sidebar state
-  const [isAiLabOpen, setIsAiLabOpen] = useState(true)
+  // Responsive UI Scaling state (Scale 1920x1080 to fit window)
+  const [uiScale, setUiScale] = useState(1)
+  const [isAiLabOpen, setIsAiLabOpen] = useState(true) // Always true now
+  const [isLyricsExpanded, setIsLyricsExpanded] = useState(false)
 
   useEffect(() => {
     const handleResize = () => {
-      // Auto collapse if screen is narrow to keep the main photorealistic dashboard locked
-      if (window.innerWidth < 1400) {
-        setIsAiLabOpen(false)
-      } else {
-        setIsAiLabOpen(true)
-      }
+      const wScale = window.innerWidth / 1920
+      const hScale = window.innerHeight / 1080
+      setUiScale(Math.min(wScale, hScale))
     }
     // Set initial size
     handleResize()
@@ -1426,13 +1432,77 @@ export default function Home() {
   const [editKey, setEditKey] = useState('A Minor')
   const [editCover, setEditCover] = useState('')
   const [editLyricsText, setEditLyricsText] = useState('')
+  const [isGeneratingCover, setIsGeneratingCover] = useState(false)
 
   // AI Lyrics Generating State
   const [isGeneratingLyrics, setIsGeneratingLyrics] = useState(false)
+  const [isAnalyzingEq, setIsAnalyzingEq] = useState(false)
   const [generatedTracks, setGeneratedTracks] = useState<Record<number, boolean>>({})
 
   // AI Voice Narration State & Effect
   const [isTtsNarratorEnabled, setIsTtsNarratorEnabled] = useState(false)
+
+  // Media Mounting State
+  const [isMounting, setIsMounting] = useState(false)
+
+  // LP Vinyl Physics Ref
+  const lpAngleRef = useRef(0)
+  const lpVelRef = useRef(0)
+  const lpHubRef = useRef<HTMLDivElement>(null)
+  const lpLabelRef = useRef<HTMLDivElement>(null)
+
+  // CD Physics Ref
+  const cdAngleRef = useRef(0)
+  const cdVelRef = useRef(0)
+  const cdBodyRef = useRef<HTMLDivElement>(null)
+
+  // Tape Physics Ref
+  const tapeAngleRef = useRef(0)
+  const tapeVelRef = useRef(0)
+  const tapeGearLeftRef = useRef<HTMLDivElement>(null)
+  const tapeGearRightRef = useRef<HTMLDivElement>(null)
+
+  // Physics loop for Media
+  useEffect(() => {
+    let raf: number
+    const loop = () => {
+      // LP
+      const isLpPlaying = isPlaying && !isMounting && mediaType === 'LP'
+      if (isLpPlaying) lpVelRef.current += (3.5 - lpVelRef.current) * 0.05
+      else lpVelRef.current *= 0.985
+      
+      if (lpVelRef.current > 0.01) {
+        lpAngleRef.current += lpVelRef.current
+        if (lpHubRef.current) lpHubRef.current.style.transform = `translate(-50%, -50%) rotate(${lpAngleRef.current}deg)`
+        if (lpLabelRef.current) lpLabelRef.current.style.transform = `translate(-50%, -50%) rotate(${lpAngleRef.current}deg)`
+      }
+
+      // CD
+      const isCdPlaying = isPlaying && !isMounting && mediaType === 'CD'
+      if (isCdPlaying) cdVelRef.current += (13.0 - cdVelRef.current) * 0.05
+      else cdVelRef.current *= 0.97
+      
+      if (cdVelRef.current > 0.01) {
+        cdAngleRef.current += cdVelRef.current
+        if (cdBodyRef.current) cdBodyRef.current.style.transform = `rotate(${cdAngleRef.current}deg)`
+      }
+
+      // TAPE
+      const isTapePlaying = isPlaying && !isMounting && mediaType === 'TAPE'
+      if (isTapePlaying) tapeVelRef.current += (2.5 - tapeVelRef.current) * 0.1
+      else tapeVelRef.current *= 0.95
+      
+      if (tapeVelRef.current > 0.01) {
+        tapeAngleRef.current += tapeVelRef.current
+        if (tapeGearLeftRef.current) tapeGearLeftRef.current.style.transform = `translate(-50%, -50%) rotate(${tapeAngleRef.current}deg)`
+        if (tapeGearRightRef.current) tapeGearRightRef.current.style.transform = `translate(-50%, -50%) rotate(${tapeAngleRef.current}deg)`
+      }
+
+      raf = requestAnimationFrame(loop)
+    }
+    raf = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(raf)
+  }, [isPlaying, isMounting, mediaType])
 
   // 3D Album Cover Cylinder Slot-Machine States
   const [isCylinderSpinning, setIsCylinderSpinning] = useState(false)
@@ -1443,6 +1513,9 @@ export default function Home() {
   const [flightType, setFlightType] = useState<MediaType>('LP')
   const [isDeckImpact, setIsDeckImpact] = useState(false)
   const [loadingTrackId, setLoadingTrackId] = useState<number | null>(null)
+  // Guard ref to prevent stale selectTrack setTimeout from overwriting the active track
+  const selectSessionRef = useRef<number>(0)
+  const selectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Audio nodes & Canvas refs
   const audioRef    = useRef<HTMLAudioElement>(null)
   const ctxRef      = useRef<AudioContext | null>(null)
@@ -1457,9 +1530,15 @@ export default function Home() {
   const compressorRef  = useRef<DynamicsCompressorNode | null>(null)
   const mrDryRef       = useRef<GainNode | null>(null)
   const mrWetRef       = useRef<GainNode | null>(null)
+  const makeupGainRef  = useRef<GainNode | null>(null)
   
   const rtaCanvasRef   = useRef<HTMLCanvasElement>(null)
+  const leftVisRef     = useRef<HTMLCanvasElement>(null)
+  const rightVisRef    = useRef<HTMLCanvasElement>(null)
   const lyricsContainerRef = useRef<HTMLDivElement>(null)
+  const fullscreenLyricsContainerRef = useRef<HTMLDivElement>(null)
+  const fsTrackRef     = useRef<HTMLDivElement>(null)
+  const fsTranslateRef = useRef<number>(0)
   const rafRef         = useRef<number>(0)
 
   const EQ_FREQS = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]
@@ -1549,6 +1628,12 @@ export default function Home() {
     })
     eqFiltersRef.current = filters
 
+    const makeupGainNode = ctx.createGain()
+    makeupGainNode.gain.value = 1.0
+    lastNode.connect(makeupGainNode)
+    makeupGainRef.current = makeupGainNode
+    lastNode = makeupGainNode
+
     // Lowshelf Bass Boost
     const bassB = ctx.createBiquadFilter()
     bassB.type = 'lowshelf'
@@ -1632,15 +1717,26 @@ export default function Home() {
 
   const gainsToFilters = (gains: number[]) => {
     if (!ctxRef.current) return
+    let sumGain = 0
     gains.forEach((val, idx) => {
+      const g = sliderToGain(val)
+      sumGain += g
       if (eqFiltersRef.current[idx]) {
         eqFiltersRef.current[idx].gain.setTargetAtTime(
-          sliderToGain(val),
+          g,
           ctxRef.current!.currentTime,
           0.02
         )
       }
     })
+
+    // Auto-Normalization (Makeup Gain) based on EQ changes to prevent extreme volume swings
+    if (makeupGainRef.current) {
+      const avgGain = sumGain / 10
+      // Apply inverse makeup gain. Divisor tempers the aggressiveness.
+      const makeup = Math.pow(10, -avgGain / 30) 
+      makeupGainRef.current.gain.setTargetAtTime(makeup, ctxRef.current.currentTime, 0.05)
+    }
   }
 
   const applyEffectsToHardware = () => {
@@ -1753,17 +1849,164 @@ export default function Home() {
           const percent = (val / 255) * factor
           const y = rtaCanvas.height - (percent * rtaCanvas.height * 0.8)
           const x = i * sliceWidth + sliceWidth / 2
-
           if (i === 0) rtaCtx.moveTo(x, y)
           else rtaCtx.lineTo(x, y)
         }
         rtaCtx.stroke()
+      } else {
+        // Render empty state if not playing (already clearing)
       }
       requestAnimationFrame(drawRta)
     }
     drawRta()
     return () => { active = false }
-  }, [isPlaying, mediaType])
+  }, [isPlaying, mediaType, isFullscreen, isAiLabOpen])
+
+  // Dedicated Fullscreen Glow Bars rendering loop
+  useEffect(() => {
+    let active = true
+    const drawGlow = () => {
+      if (!active) return
+      requestAnimationFrame(drawGlow)
+      
+      if (leftVisRef.current && rightVisRef.current && analyserRef.current && isPlaying) {
+        const lCanvas = leftVisRef.current;
+        const rCanvas = rightVisRef.current;
+        const lCtx = lCanvas.getContext('2d');
+        const rCtx = rCanvas.getContext('2d');
+        
+        if (lCtx && rCtx) {
+          // Prevent infinite resize loops by only resizing when needed
+          const expectedWidth = Math.floor(lCanvas.offsetWidth);
+          const expectedHeight = Math.floor(lCanvas.offsetHeight);
+          
+          if (expectedWidth > 0 && expectedHeight > 0) {
+            if (lCanvas.width !== expectedWidth) lCanvas.width = expectedWidth;
+            if (lCanvas.height !== expectedHeight) lCanvas.height = expectedHeight;
+            if (rCanvas.width !== expectedWidth) rCanvas.width = expectedWidth;
+            if (rCanvas.height !== expectedHeight) rCanvas.height = expectedHeight;
+          }
+          
+          const w = lCanvas.width;
+          const h = lCanvas.height;
+          
+          if (w === 0 || h === 0) return;
+          
+          lCtx.clearRect(0, 0, w, h);
+          rCtx.clearRect(0, 0, w, h);
+          
+          let dataArray: Uint8Array;
+          let bufferLength = 0;
+          try {
+            bufferLength = analyserRef.current.frequencyBinCount;
+            dataArray = new Uint8Array(bufferLength);
+            analyserRef.current.getByteFrequencyData(dataArray);
+          } catch (e) {
+            return;
+          }
+          
+          // Use about 40 bins for the vertical visualizer (skip very high frequencies)
+          const binsToUse = Math.min(40, bufferLength);
+          const sliceHeight = h / (binsToUse - 1);
+          
+          // Theme colors (softened opacity and balanced for 3-color blending)
+          let color1, color2, color3;
+          if (mediaType === 'CD') {
+            color1 = 'rgba(0, 210, 255, 0.65)'; // High-visibility Cyan
+            color2 = 'rgba(138, 43, 226, 0.50)'; // Soft Purple
+            color3 = 'rgba(255, 0, 255, 0.35)'; // Soft Magenta
+          } else if (mediaType === 'TAPE') {
+            color1 = 'rgba(255, 255, 255, 0.70)'; // White
+            color2 = 'rgba(169, 181, 194, 0.50)'; // Silver-Grey
+            color3 = 'rgba(169, 181, 194, 0.30)'; // Darker Silver-Grey
+          } else {
+            color1 = 'rgba(220, 163, 52, 0.65)'; // High-visibility Gold
+            color2 = 'rgba(234, 88, 12, 0.50)'; // Warm Orange/Amber
+            color3 = 'rgba(127, 29, 29, 0.35)'; // Soft Deep Red/Brown
+          }
+          
+          // Left Canvas Gradient (horizontal blend from edge to transparent)
+          const gradL = lCtx.createLinearGradient(0, 0, w, 0);
+          gradL.addColorStop(0, color1);
+          gradL.addColorStop(0.3, color2);
+          gradL.addColorStop(0.7, color3);
+          gradL.addColorStop(1, 'rgba(0, 0, 0, 0)');
+          
+          // Right Canvas Gradient (horizontal blend from edge to transparent)
+          const gradR = rCtx.createLinearGradient(w, 0, 0, 0);
+          gradR.addColorStop(0, color1);
+          gradR.addColorStop(0.3, color2);
+          gradR.addColorStop(0.7, color3);
+          gradR.addColorStop(1, 'rgba(0, 0, 0, 0)');
+          
+          // --- Draw Left Wave ---
+          lCtx.beginPath();
+          lCtx.moveTo(0, 0);
+          let prevX = 0;
+          let prevY = 0;
+          for (let i = 0; i < binsToUse; i++) {
+            const v = dataArray[i] / 255.0;
+            // Scale amplitude. Add base width to ensure a solid edge before the blur diffuses it.
+            const x = 15 + Math.pow(v, 1.2) * w * 1.5;
+            const y = i * sliceHeight;
+            
+            if (i === 0) {
+              lCtx.lineTo(x, y);
+            } else {
+              const cpX = (prevX + x) / 2;
+              const cpY = (prevY + y) / 2;
+              lCtx.quadraticCurveTo(prevX, prevY, cpX, cpY);
+            }
+            prevX = x;
+            prevY = y;
+          }
+          lCtx.lineTo(prevX, prevY);
+          lCtx.lineTo(0, h);
+          lCtx.closePath();
+          lCtx.fillStyle = gradL;
+          lCtx.fill();
+          
+          // --- Draw Right Wave ---
+          rCtx.beginPath();
+          rCtx.moveTo(w, 0);
+          prevX = w;
+          prevY = 0;
+          for (let i = 0; i < binsToUse; i++) {
+            const v = dataArray[i] / 255.0;
+            const x = w - (15 + Math.pow(v, 1.2) * w * 1.5);
+            const y = i * sliceHeight;
+            
+            if (i === 0) {
+              rCtx.lineTo(x, y);
+            } else {
+              const cpX = (prevX + x) / 2;
+              const cpY = (prevY + y) / 2;
+              rCtx.quadraticCurveTo(prevX, prevY, cpX, cpY);
+            }
+            prevX = x;
+            prevY = y;
+          }
+          rCtx.lineTo(prevX, prevY);
+          rCtx.lineTo(w, h);
+          rCtx.closePath();
+          rCtx.fillStyle = gradR;
+          rCtx.fill();
+        }
+      } else if (leftVisRef.current && rightVisRef.current) {
+        // Clear canvas if paused
+        const lCanvas = leftVisRef.current;
+        const rCanvas = rightVisRef.current;
+        const lCtx = lCanvas.getContext('2d');
+        const rCtx = rCanvas.getContext('2d');
+        if (lCtx) lCtx.clearRect(0, 0, lCanvas.width, lCanvas.height);
+        if (rCtx) rCtx.clearRect(0, 0, rCanvas.width, rCanvas.height);
+      }
+    }
+    
+    drawGlow()
+    
+    return () => { active = false }
+  }, [isPlaying, mediaType, isFullscreen])
 
   // Dynamic frequency analyzer for VU levels
   const [vuLevels, setVuLevels] = useState<{ l: number; r: number }>({ l: 0, r: 0 })
@@ -1938,23 +2181,53 @@ export default function Home() {
   const selectTrack = (t: Track, forcePlay = true, isSequential = false) => {
     const shouldPlay = isPlaying || forcePlay
     
+    // Increment session ID to invalidate any pending stale selectTrack timers
+    const sessionId = ++selectSessionRef.current
+    if (selectTimerRef.current) {
+      clearTimeout(selectTimerRef.current)
+      selectTimerRef.current = null
+    }
+    
     // Set loading track state for high-end responsive feedback in sidebar listing
     setLoadingTrackId(t.id)
     
+    // Use a ref-like mutable container so async fetch can update latestTrackObj
+    // and the setTimeout closure always reads the freshest value for THIS session
+    const trackBox = { value: t };
+    
     // Fetch persisted metadata (.ifx) from local server in background
     const filename = t.src.split('/').pop()?.replace(/\.[^/.]+$/, "") || ""
-    let latestTrackObj = t;
     if (filename) {
       fetch(`/api/track-metadata?filename=${encodeURIComponent(filename)}`)
         .then(res => res.ok ? res.json() : null)
         .then(data => {
+          // Only apply if this session is still the active one
+          if (selectSessionRef.current !== sessionId) return;
           if (data) {
             const merged = { ...t, ...data };
-            latestTrackObj = merged;
+            trackBox.value = merged;
             setTracks(prev => prev.map(x => x.id === t.id ? merged : x));
+            if (isAiEqEnabled) {
+              if (data.eq) {
+                setEqGains(data.eq);
+                gainsToFilters(data.eq);
+              } else {
+                triggerAutoEq(t.src);
+              }
+            }
+          } else {
+            if (isAiEqEnabled) {
+              triggerAutoEq(t.src);
+            }
           }
         })
-        .catch(err => console.error("Error loading track metadata on select:", err));
+        .catch(err => {
+          if (selectSessionRef.current !== sessionId) return;
+          console.error("Error loading track metadata on select:", err);
+          if (isAiEqEnabled) {
+            triggerAutoEq(t.src);
+          }
+        });
     }
     
     // Synchronously change the source and start playing in muted state during user gesture
@@ -1970,6 +2243,7 @@ export default function Home() {
       audioRef.current.pause()
     }
     setPlaying(shouldPlay)
+    setIsMounting(true)
 
     // Trigger 3D Album Cover Flow Roll searching & clicking based on sequential adjacent vs random shuffle
     if (!isSequential) {
@@ -2011,14 +2285,25 @@ export default function Home() {
       triggerTactileSounds()
     }
 
-    setTimeout(() => {
+    selectTimerRef.current = setTimeout(() => {
+      // CRITICAL GUARD: Only execute if this session is still the active one.
+      // Prevents stale timers from overwriting the current track with a previous selection.
+      if (selectSessionRef.current !== sessionId) return;
+      
       setIsCylinderSpinning(false)
       setShowMediaFlight(false)
       setLoadingTrackId(null)
+      setIsMounting(false)
+      selectTimerRef.current = null
+      
+      // Reset spin speeds on exact swap so that new media starts spinning from 0 speed
+      lpVelRef.current = 0
+      cdVelRef.current = 0
+      tapeVelRef.current = 0
 
       // EXACT MOMENT OF SWAP: Now that the flight loader has aligned exactly with the deck,
       // update active track state and reset position! Player mode remains unchanged.
-      setTrack(latestTrackObj)
+      setTrack(trackBox.value)
       setTime(0)
       
       if (audioRef.current) {
@@ -2286,41 +2571,189 @@ export default function Home() {
     if (audioRef.current) audioRef.current.volume = muted ? 0 : volume
   }, [volume, muted])
 
-  // AI Speech DJ voice synthesize feedback (Text To Speech)
-  const speakResponse = (text: string) => {
-    if (typeof window === 'undefined' || !window.speechSynthesis) return
-    window.speechSynthesis.cancel() // Stop any current sound
-    const utterance = new SpeechSynthesisUtterance(text.replace(/✦/g, ''))
-    utterance.lang = 'ko-KR'
-    utterance.rate = 1.05
-    utterance.pitch = 0.95
-    utterance.onstart = () => setIsAiTalking(true)
-    utterance.onend = () => setIsAiTalking(false)
-    utterance.onerror = () => setIsAiTalking(false)
-    window.speechSynthesis.speak(utterance)
+  // AI Speech DJ voice synthesize feedback (Text To Speech - Neural via edge-tts with fallback)
+  const speakResponse = async (text: string) => {
+    if (typeof window === 'undefined') return;
+    
+    // Stop any currently playing speech synthesis or audio TTS elements
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+    
+    // Check if we have a custom TTS audio element, stop it if playing
+    let ttsAudio = document.getElementById('neural-tts-audio') as HTMLAudioElement;
+    if (ttsAudio) {
+      ttsAudio.onerror = null;
+      ttsAudio.onended = null;
+      ttsAudio.pause();
+      ttsAudio.src = "";
+    }
+
+    setIsAiTalking(true);
+
+    try {
+      const res = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text.replace(/✦/g, '') })
+      });
+
+      if (!res.ok) throw new Error("Neural TTS failed");
+      const data = await res.json();
+      
+      if (data.url) {
+        if (!ttsAudio) {
+          ttsAudio = document.createElement('audio');
+          ttsAudio.id = 'neural-tts-audio';
+          document.body.appendChild(ttsAudio);
+        }
+        ttsAudio.src = data.url;
+        ttsAudio.volume = volume;
+        ttsAudio.play().catch((err: any) => {
+          // Fallback if autoplay is blocked
+          if (err && err.name === 'NotAllowedError') {
+            localSpeakFallback(text);
+          } else {
+            setIsAiTalking(false);
+          }
+        });
+        ttsAudio.onended = () => setIsAiTalking(false);
+        ttsAudio.onerror = (e) => {
+          // Only fallback if the src is valid and failed, not if it was cleared
+          if (ttsAudio.src && ttsAudio.src !== window.location.href && !ttsAudio.src.endsWith('/')) {
+            localSpeakFallback(text);
+          } else {
+            setIsAiTalking(false);
+          }
+        };
+        return;
+      }
+    } catch (err) {
+      console.warn("Neural TTS API call failed, falling back to Web Speech API:", err);
+    }
+
+    localSpeakFallback(text);
+  }
+
+  const localSpeakFallback = (text: string) => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) {
+      setIsAiTalking(false);
+      return;
+    }
+    const utterance = new SpeechSynthesisUtterance(text.replace(/✦/g, ''));
+    utterance.lang = 'ko-KR';
+    utterance.rate = 1.05;
+    utterance.pitch = 0.98;
+    
+    const voices = window.speechSynthesis.getVoices();
+    const koVoice = voices.find(v => v.lang.startsWith('ko') && (v.name.includes('Google') || v.name.includes('Natural') || v.name.includes('Heami'))) || 
+                    voices.find(v => v.lang.startsWith('ko'));
+    if (koVoice) utterance.voice = koVoice;
+
+    utterance.onstart = () => setIsAiTalking(true);
+    utterance.onend = () => setIsAiTalking(false);
+    utterance.onerror = () => setIsAiTalking(false);
+    window.speechSynthesis.speak(utterance);
   }
 
   // NLP client-side query matching & Audio TTS reaction
-  const handleAiQuery = (q: string) => {
-    setAiQuery(q)
-    let key = 'default'
-    if (q.includes('비') || q.includes('우산') || q.includes('rain')) key = 'rainy'
-    else if (q.includes('편한') || q.includes('힐링') || q.includes('chill')) key = 'chill'
-    else if (q.includes('에너지') || q.includes('신나') || q.includes('클럽') || q.includes('dance')) key = 'energy'
-    else if (q.includes('우주') || q.includes('몽환') || q.includes('space') || q.includes('mirage')) key = 'space'
+  const submitAiQuery = async () => {
+    const q = aiQuery
+    if (!q.trim()) return
+    
+    setAiQuery('')
+    setAiResponse("분위기를 스캔 중입니다... 어울리는 곡을 찾아볼게요.")
 
-    const resText = AI_DJ_RESPONSES[key]
-    setAiResponse(resText)
-    speakResponse(resText)
+    try {
+      const res = await fetch('/api/ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          query: q, 
+          currentTrackName: track.title,
+          currentTrackArtist: track.artist,
+          mediaType: mediaType,
+          tracks: tracks
+        })
+      });
 
-    // Auto queue matching track based on intent
-    if (key === 'rainy') selectTrack(tracks[0]) // Shine On
-    else if (key === 'chill') selectTrack(tracks[10]) // Propolis
-    else if (key === 'energy') selectTrack(tracks[1]) // Midnight Breaker
-    else if (key === 'space') selectTrack(tracks[2]) // Midnight Mirage
+      if (res.status === 501) {
+        // Fallback to Rule-based if no API key
+        let key = 'default'
+        if (q.includes('비') || q.includes('우산') || q.includes('rain')) key = 'rainy'
+        else if (q.includes('편한') || q.includes('힐링') || q.includes('chill')) key = 'chill'
+        else if (q.includes('에너지') || q.includes('신나') || q.includes('클럽') || q.includes('dance')) key = 'energy'
+        else if (q.includes('우주') || q.includes('몽환') || q.includes('space') || q.includes('mirage')) key = 'space'
+
+        const resText = AI_DJ_RESPONSES[key] || AI_DJ_RESPONSES['default']
+        setAiResponse(resText)
+        speakResponse(resText)
+
+        if (key === 'rainy') selectTrack(tracks[0])
+        else if (key === 'chill') selectTrack(tracks[10])
+        else if (key === 'energy') selectTrack(tracks[1])
+        else if (key === 'space') selectTrack(tracks[2])
+        return;
+      }
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || "API Request Failed");
+      }
+
+      const data = await res.json();
+      setAiResponse(data.reply);
+      speakResponse(data.reply);
+
+      // Execute AI actions (Function Calling)
+      if (data.actions && data.actions.length > 0) {
+        for (const action of data.actions) {
+          if (action.name === 'change_track') {
+             const trackId = action.args.track_id;
+             if (trackId !== undefined) {
+               const match = tracks.find(t => t.id === Number(trackId));
+               if (match) selectTrack(match);
+             } else {
+               const trackKeyword = action.args.track_name || action.args.mood;
+               if (trackKeyword) {
+                 const match = tracks.find(t => 
+                   t.title.toLowerCase().includes(trackKeyword.toLowerCase()) || 
+                   t.genre.toLowerCase().includes(trackKeyword.toLowerCase())
+                 );
+                 if (match) selectTrack(match);
+               }
+             }
+          } else if (action.name === 'set_eq') {
+             applyPreset(action.args.preset);
+          } else if (action.name === 'set_reverb') {
+             updateReverb(action.args.level, action.args.environment);
+          } else if (action.name === 'set_volume') {
+             if (action.args.level !== undefined) {
+               setVolume(action.args.level / 100);
+             }
+             if (action.args.mute !== undefined) {
+               setMuted(action.args.mute);
+             }
+          } else if (action.name === 'change_media_type') {
+             if (action.args.media_type) {
+               setMediaType(action.args.media_type);
+             }
+          } else if (action.name === 'set_fullscreen') {
+             if (action.args.enabled !== undefined) {
+               setIsFullscreen(action.args.enabled);
+             }
+          }
+        }
+      }
+      
+    } catch (err: any) {
+      console.error(err);
+      const fallbackMsg = `앗, 문제가 생겼네요: ${err.message}`;
+      setAiResponse(fallbackMsg);
+      speakResponse("오류가 발생했습니다.");
+    }
   }
 
   const applyPreset = (name: string) => {
+    if (isAiEqEnabled) return;
     setPreset(name)
     const gains = EQ_PRESETS[name] || customPresets[name]
     if (gains) {
@@ -2412,11 +2845,68 @@ export default function Home() {
     }
   }
 
+  // AI Automatic EQ Audio Analysis (Pink Noise matching)
+  const triggerAutoEq = async (audioSrc: string) => {
+    const filename = audioSrc.split('/').pop() || "";
+    if (!filename) return;
+
+    setIsAnalyzingEq(true);
+    try {
+      const res = await fetch('/api/auto-eq', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename })
+      });
+
+      if (!res.ok) throw new Error("Auto-EQ analysis failed");
+      const data = await res.json();
+      if (data.eq) {
+        setEqGains(data.eq);
+        gainsToFilters(data.eq);
+
+        // Save new EQ profile to the track's .ifx file
+        const metaName = filename.replace(/\.[^/.]+$/, "");
+        // Fetch current metadata first
+        let currentMeta = {};
+        try {
+          const checkRes = await fetch(`/api/track-metadata?filename=${encodeURIComponent(metaName)}`);
+          if (checkRes.ok) currentMeta = await checkRes.json();
+        } catch (e) {}
+
+        const updatedMeta = {
+          ...currentMeta,
+          eq: data.eq
+        };
+
+        await fetch('/api/track-metadata', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            filename: metaName,
+            metadata: updatedMeta
+          })
+        });
+
+        // Update tracks state
+        setTracks(prev => prev.map(x => {
+          if (x.src.includes(filename)) {
+            return { ...x, eq: data.eq };
+          }
+          return x;
+        }));
+      }
+    } catch (err) {
+      console.error("AI Auto-EQ analysis failed:", err);
+    } finally {
+      setIsAnalyzingEq(false);
+    }
+  }
+
   // AI Generative Lyrics using Python Backend (Whisper + Demucs)
   const generateAiLyrics = async () => {
     setIsGeneratingLyrics(true)
 
-    const filename = track.src.split('/').pop()?.replace(/\.[^/.]+$/, "") || ""
+    const filename = track.src.split('/').pop() || ""
     if (!filename) {
       setIsGeneratingLyrics(false)
       return
@@ -2464,7 +2954,7 @@ export default function Home() {
   }
 
   // Save Track meta configurations
-  const saveTrackProperties = () => {
+  const saveTrackProperties = async () => {
     if (!editingTrack) return
     const updatedTrack = {
       ...editingTrack,
@@ -2477,52 +2967,67 @@ export default function Home() {
       lyrics: editLyricsText.split('\n').filter(l => l.trim().length > 0)
     }
 
-    const updated = tracks.map(t => {
-      if (t.id === editingTrack.id) return updatedTrack
-      return t
-    })
-    setTracks(updated)
-    if (track.id === editingTrack.id) {
-      setTrack(updatedTrack)
-    }
-
     // Persist to server metadata file (.ifx) inside public/music
     const filename = editingTrack.src.split('/').pop()?.replace(/\.[^/.]+$/, "") || ""
-    if (filename) {
-      fetch('/api/track-metadata', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          filename,
-          metadata: {
-            title: updatedTrack.title,
-            artist: updatedTrack.artist,
-            genre: updatedTrack.genre,
-            bpm: updatedTrack.bpm,
-            key: updatedTrack.key,
-            coverUrl: updatedTrack.coverUrl,
-            lyrics: updatedTrack.lyrics,
-            linerNotes: updatedTrack.linerNotes
-          }
-        })
+    const res = await fetch('/api/track-metadata', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        filename,
+        metadata: {
+          title: updatedTrack.title,
+          artist: updatedTrack.artist,
+          genre: updatedTrack.genre,
+          bpm: updatedTrack.bpm,
+          key: updatedTrack.key,
+          coverUrl: updatedTrack.coverUrl,
+          lyrics: updatedTrack.lyrics
+        }
       })
-      .then(res => {
-        if (!res.ok) throw new Error('Save failed')
-        return res.json()
-      })
-      .then(() => {
-        speakResponse("곡 정보 및 가사 파일이 음악 디렉토리에 성공적으로 저장되었습니다.")
-      })
-      .catch(err => {
-        console.error("Error saving track metadata:", err)
-      })
-    }
+    })
 
-    setEditingTrack(null)
+    if (!res.ok) throw new Error('Save failed')
+    const updated = await res.json()
+    
+    // Refresh track list to get the updated metadata
+    const tracksRes = await fetch('/api/tracks')
+    if (tracksRes.ok) {
+      setTracks(await tracksRes.json())
+    }
+    
     setShowEditModal(false)
   }
+
+  const generateDalleCover = async () => {
+    if (!editingTrack) return
+    setIsGeneratingCover(true)
+    try {
+      const filename = editingTrack.src.split('/').pop() || 'unknown.mp3';
+      const res = await fetch('/api/dalle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          title: editTitle, 
+          artist: editArtist, 
+          genre: editGenre,
+          filename: filename
+        })
+      });
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || "DALL-E request failed");
+      }
+      const data = await res.json();
+      setEditCover(data.coverUrl);
+    } catch (err: any) {
+      console.error(err);
+      alert("커버 생성 실패: " + err.message);
+    } finally {
+      setIsGeneratingCover(false);
+    }
+  }
+
+
 
   const formatTime = (secs: number) => {
     const m = Math.floor(secs / 60);
@@ -2566,6 +3071,8 @@ export default function Home() {
   useEffect(() => {
     let animationFrameId: number;
     const container = lyricsContainerRef.current;
+    const fsContainer = fullscreenLyricsContainerRef.current;
+    const fsTrack = fsTrackRef.current;
     if (!container || parsedLyrics.length === 0) return;
 
     const scrollLoop = () => {
@@ -2605,6 +3112,23 @@ export default function Home() {
           // Lerp for butter-smooth visual motion without jitter
           container.scrollTop += (scrollTarget - container.scrollTop) * 0.08;
         }
+
+        // Horizontal fullscreen lyrics scrolling (perfectly static centering, no dynamic drift crawl)
+        if (fsContainer && fsTrack) {
+          const fsLineElements = fsTrack.querySelectorAll('.fs-lyric-line');
+          const fsCurrentEl = fsLineElements[currentIndex] as HTMLElement;
+          if (fsCurrentEl) {
+            const targetOffset = fsContainer.offsetWidth / 2 - (fsCurrentEl.offsetLeft + fsCurrentEl.offsetWidth / 2);
+            
+            // Lerp target horizontal translation
+            if (fsTranslateRef.current === 0) {
+              fsTranslateRef.current = targetOffset;
+            } else {
+              fsTranslateRef.current += (targetOffset - fsTranslateRef.current) * 0.15;
+            }
+            fsTrack.style.transform = `translateX(${fsTranslateRef.current}px)`;
+          }
+        }
       }
       animationFrameId = requestAnimationFrame(scrollLoop);
     };
@@ -2614,6 +3138,21 @@ export default function Home() {
     return () => cancelAnimationFrame(animationFrameId);
   }, [parsedLyrics, isPlaying]);
 
+  // Snap horizontal scroll when lyric index changes instantly (like skip/seek)
+  useEffect(() => {
+    const fsContainer = fullscreenLyricsContainerRef.current;
+    const fsTrack = fsTrackRef.current;
+    if (fsContainer && fsTrack) {
+      const fsLineElements = fsTrack.querySelectorAll('.fs-lyric-line');
+      const fsCurrentEl = fsLineElements[activeLyricIndex] as HTMLElement;
+      if (fsCurrentEl) {
+        const targetOffset = fsContainer.offsetWidth / 2 - (fsCurrentEl.offsetLeft + fsCurrentEl.offsetWidth / 2);
+        fsTranslateRef.current = targetOffset;
+        fsTrack.style.transform = `translateX(${targetOffset}px)`;
+      }
+    }
+  }, [activeLyricIndex]);
+
   // AI Voice Narration Effect to read active lyric line in real-time
   useEffect(() => {
     const activeLine = parsedLyrics[activeLyricIndex]
@@ -2622,15 +3161,61 @@ export default function Home() {
       if (text.startsWith('[') && text.endsWith(']')) return;
       if (text.includes('스캔하고 있습니다') || text.includes('분위기 매칭 대기 중')) return;
       
-      if (typeof window !== 'undefined' && window.speechSynthesis) {
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 1.0;
-        const voices = window.speechSynthesis.getVoices();
-        const koVoice = voices.find(v => v.lang.startsWith('ko'));
-        if (koVoice) utterance.voice = koVoice;
-        window.speechSynthesis.speak(utterance);
-      }
+      const speakLyric = async () => {
+        let ttsAudio = document.getElementById('lyric-tts-audio') as HTMLAudioElement;
+        if (ttsAudio) {
+          ttsAudio.onerror = null;
+          ttsAudio.pause();
+          ttsAudio.src = "";
+        }
+
+        try {
+          const res = await fetch('/api/tts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.url) {
+              if (!ttsAudio) {
+                ttsAudio = document.createElement('audio');
+                ttsAudio.id = 'lyric-tts-audio';
+                document.body.appendChild(ttsAudio);
+              }
+              ttsAudio.src = data.url;
+              ttsAudio.volume = volume;
+              ttsAudio.play().catch((err: any) => {
+                if (err && err.name === 'NotAllowedError') {
+                  localLyricSpeak(text);
+                }
+              });
+              ttsAudio.onerror = () => {
+                if (ttsAudio.src && ttsAudio.src !== window.location.href && !ttsAudio.src.endsWith('/')) {
+                  localLyricSpeak(text);
+                }
+              };
+              return;
+            }
+          }
+        } catch (e) {}
+        localLyricSpeak(text);
+      };
+
+      const localLyricSpeak = (txt: string) => {
+        if (typeof window !== 'undefined' && window.speechSynthesis) {
+          window.speechSynthesis.cancel();
+          const utterance = new SpeechSynthesisUtterance(txt);
+          utterance.rate = 1.0;
+          const voices = window.speechSynthesis.getVoices();
+          const koVoice = voices.find(v => v.lang.startsWith('ko') && (v.name.includes('Google') || v.name.includes('Natural') || v.name.includes('Heami'))) || 
+                          voices.find(v => v.lang.startsWith('ko'));
+          if (koVoice) utterance.voice = koVoice;
+          window.speechSynthesis.speak(utterance);
+        }
+      };
+
+      speakLyric();
     }
   }, [activeLyricIndex, isTtsNarratorEnabled, isPlaying, parsedLyrics]);
 
@@ -2667,11 +3252,26 @@ export default function Home() {
   const leftReelSize = 11.6 + (1 - progressPct / 100) * 14.4
   const rightReelSize = 11.6 + (progressPct / 100) * 14.4
 
-  // Rotation parameters for CD/Vinyl
-  const spinSpeedClass = isPlaying ? 'spinning' : ''
+  // For CD and Tape, we use CSS animation. It only spins if playing AND not mounting.
+  const isPhysicalSpinning = isPlaying && !isMounting
+  const spinSpeedClass = isPhysicalSpinning ? 'spinning' : ''
 
   return (
-    <div className={`app-layout ${!isAiLabOpen ? 'ai-lab-collapsed' : ''} ${isFullscreen ? 'fullscreen-mode' : ''}`} data-mode={mediaType}>
+    <>
+    <div className="scale-wrapper" style={{ position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden' }}>
+    <div 
+      className={`app-layout ${!isAiLabOpen ? 'ai-lab-collapsed' : ''} ${isFullscreen ? 'fullscreen-mode' : ''}`} 
+      data-mode={mediaType}
+      style={{
+        transform: `translate(-50%, -50%) scale(${scale})`,
+        transformOrigin: 'center center',
+        width: `${100 / scale}vw`,
+        height: `${100 / scale}vh`,
+        position: 'absolute',
+        top: '50%',
+        left: '50%'
+      }}
+    >
       {/* ── HEADER ── */}
       <header className="app-header">
         <div className="logo">
@@ -2680,7 +3280,7 @@ export default function Home() {
         </div>
 
         {/* Dynamic media selection on header for a beautiful dashboard */}
-        <div style={{ width: '680px' }}>
+        <div style={{ flex: '1 1 auto', display: 'flex', justifyContent: 'center', maxWidth: '680px' }}>
           <div className="deck-selector">
             {([
               {
@@ -2733,14 +3333,22 @@ export default function Home() {
       <aside className="left-sidebar">
         <div>
           <div className="section-label">Interactive AI DJ</div>
-          <div className="ai-dj-search-container">
+          <div className="ai-dj-search-container" style={{ display: 'flex', alignItems: 'center' }}>
             <input
               className="ai-dj-search"
               placeholder="예: 비오는 밤 분위기 추천해줘"
               value={aiQuery}
-              onChange={e => handleAiQuery(e.target.value)}
+              onChange={e => setAiQuery(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && submitAiQuery()}
+              style={{ flex: 1 }}
             />
-            <Sparkles size={16} style={{ position: 'absolute', right: 12, color: 'var(--accent)', opacity: 0.7 }} />
+            <button
+              onClick={submitAiQuery}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              title="AI에게 물어보기"
+            >
+              <Sparkles size={16} style={{ color: 'var(--accent)', opacity: 0.9 }} />
+            </button>
           </div>
           {aiResponse && (
             <div style={{
@@ -3002,12 +3610,12 @@ export default function Home() {
                 <img src="/images/lp_turntable.png" alt="Vinyl LP" className="photoreal-bg" />
                 
                 {/* Spinning Platter/Vinyl Sheen Overlay placed exactly over the platter in the image */}
-                <div className={`lp-spindle-hub ${spinSpeedClass}`}>
+                <div ref={lpHubRef} className="lp-spindle-hub">
                   <div className="sheen-overlay" />
                 </div>
 
                 {/* Rotating active track album art label in the record center */}
-                <div className={`lp-center-label ${spinSpeedClass}`}>
+                <div ref={lpLabelRef} className="lp-center-label">
                   <img
                     src={track.coverUrl || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=300&q=80'}
                     alt="label"
@@ -3030,7 +3638,7 @@ export default function Home() {
 
                 {/* Virtual CD Layer spinning with acceleration/deceleration */}
                 <div className="virtual-cd">
-                  <div className={`cd-body ${cdSpinClass}`}>
+                  <div ref={cdBodyRef} className="cd-body">
                     {/* Concave CD face reflections and tracks */}
                     <div className="cd-grooves" />
                     <div className="cd-sheen" />
@@ -3050,7 +3658,7 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Bright Laser Lens Center Pickup blue aura */}
+                {/* Highly opaque real album art label in the center */}
                 {isPlaying && <div className="cd-laser-blue-glow" />}
 
                 {/* Dynamic Cyan Digital Level VFD Screen overlayed exactly on the bezel display */}
@@ -3151,14 +3759,14 @@ export default function Home() {
                 }} />
 
                 {/* Spinning sprocket gear overlays situated on top of the spindles in cassette_tape.png */}
-                <div className={`tape-gear-left ${spinSpeedClass}`}>
+                <div ref={tapeGearLeftRef} className="tape-gear-left">
                   <svg viewBox="0 0 100 100" style={{ width: '100%', height: '100%', color: '#ffffff', opacity: 0.9 }}>
                     <circle cx="50" cy="50" r="30" fill="none" stroke="currentColor" strokeWidth="8" />
                     <path d="M50,8 L50,28 M50,72 L50,92 M13.6,29 L29.6,39 M70.4,61 L86.4,71 M13.6,71 L29.6,61 M70.4,39 L86.4,29" stroke="currentColor" strokeWidth="12" strokeLinecap="round" />
                     <circle cx="50" cy="50" r="13" fill="#0c0805" />
                   </svg>
                 </div>
-                <div className={`tape-gear-right ${spinSpeedClass}`}>
+                <div ref={tapeGearRightRef} className="tape-gear-right">
                   <svg viewBox="0 0 100 100" style={{ width: '100%', height: '100%', color: '#ffffff', opacity: 0.9 }}>
                     <circle cx="50" cy="50" r="30" fill="none" stroke="currentColor" strokeWidth="8" />
                     <path d="M50,8 L50,28 M50,72 L50,92 M13.6,29 L29.6,39 M70.4,61 L86.4,71 M13.6,71 L29.6,61 M70.4,39 L86.4,29" stroke="currentColor" strokeWidth="12" strokeLinecap="round" />
@@ -3304,6 +3912,64 @@ export default function Home() {
             </div>
           </div>
         </div>
+
+        {/* Fullscreen Horizontal Ticker */}
+        {isFullscreen && parsedLyrics.length > 0 && (
+          <div 
+            ref={fullscreenLyricsContainerRef} 
+            className="fullscreen-lyrics-ticker"
+            style={{
+              width: '100%',
+              overflow: 'hidden',
+              position: 'relative',
+              height: '80px',
+              display: 'flex',
+              alignItems: 'center',
+              margin: '10px 0',
+              background: 'rgba(0, 0, 0, 0.45)',
+              borderRadius: '12px',
+              border: '1px solid var(--panel-border)',
+              boxShadow: 'inset 0 0 15px rgba(0,0,0,0.5)',
+              flexShrink: 0
+            }}
+          >
+            <div 
+              ref={fsTrackRef} 
+              className="fullscreen-lyrics-track"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                whiteSpace: 'nowrap',
+                transition: 'transform 0.15s ease-out',
+                willChange: 'transform',
+                paddingLeft: '50%',
+                paddingRight: '50%'
+              }}
+            >
+              {parsedLyrics.map((item, i) => {
+                const isCurrentLine = i === activeLyricIndex;
+                return (
+                  <div
+                    key={i}
+                    className={`fs-lyric-line ${isCurrentLine ? 'active' : ''}`}
+                    style={{
+                      display: 'inline-block',
+                      padding: '0 40px',
+                      fontSize: isCurrentLine ? '24px' : '18px',
+                      fontWeight: isCurrentLine ? 800 : 500,
+                      color: isCurrentLine ? '#ffffff' : 'rgba(255, 255, 255, 0.35)',
+                      textShadow: isCurrentLine ? '0 0 15px rgba(var(--accent-rgb), 0.8)' : 'none',
+                      transition: 'all 0.3s ease',
+                      transform: isCurrentLine ? 'scale(1.15)' : 'scale(1)'
+                    }}
+                  >
+                    {item.text}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Master Controller panel with actual Synced Lyrics Scrolling */}
         <div className="controls-bar">
@@ -3485,239 +4151,308 @@ export default function Home() {
         <div className="section-label" style={{ marginBottom: 2 }}>AI Sound Lab</div>
 
         {/* 10-Band EQ Graphic Faders with RTA background spectrum */}
-        <div style={{ position: 'relative' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-            <span style={{ fontSize: '12.5px', color: 'var(--text-dim)', fontWeight: 600 }}>10-Band EQ RTA</span>
-            <button
-              onClick={() => setShowSavePresetModal(true)}
-              style={{ fontSize: '10px', color: 'var(--accent)', fontWeight: 800, background: 'rgba(255,255,255,0.04)', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer' }}
-            >
-              Save Custom
-            </button>
-          </div>
-          
-          <div className="eq-10band-container" style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', background: 'rgba(0,0,0,0.35)', padding: '10px 6px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.05)', height: '100px' }}>
-            {/* RTA Canvas floating behind the inputs */}
-            <canvas ref={rtaCanvasRef} className="rta-canvas" />
-
-            {EQ_FREQS.map((freq, idx) => {
-              const val = eqGains[idx] ?? 50
-              const gain = sliderToGain(val)
-              const displayFreq = freq >= 1000 ? `${freq/1000}k` : freq
-              return (
-                <div key={freq} className="eq-col-inner" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, height: '100%', position: 'relative' }}>
-                  <span style={{ fontSize: '9.5px', color: 'var(--text-dim)', scale: '0.85', marginBottom: 2 }}>{displayFreq}</span>
-                  
-                  <div style={{ flex: 1, width: '3.5px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', position: 'relative', margin: '4px 0' }}>
-                    <div style={{
-                      position: 'absolute', bottom: 0, left: 0, right: 0,
-                      height: `${val}%`,
-                      background: gain > 0 ? 'var(--accent2)' : gain < 0 ? '#ff5a5a' : 'var(--accent)',
-                      borderRadius: '2px', opacity: 0.8
-                    }} />
-                    <div style={{
-                      position: 'absolute', left: '50%', bottom: `calc(${val}% - 5px)`,
-                      transform: 'translateX(-50%)',
-                      width: '11px', height: '11px', borderRadius: '50%',
-                      background: 'conic-gradient(from 0deg, #f2f2f2 0deg, #c5c5c5 25deg, #a3a3a3 50deg, #e8e8e8 90deg, #999999 125deg, #fcfcfc 150deg, #7a7a7a 180deg, #c0c0c0 210deg, #8f8f8f 240deg, #e5e5e5 270deg, #b0b0b0 300deg, #ffffff 330deg, #f2f2f2 360deg)',
-                      boxShadow: '0 2px 4px rgba(0,0,0,0.6), inset 0 0.8px 0.8px rgba(255,255,255,0.85), inset 0 -0.8px 0.8px rgba(0,0,0,0.25)',
-                      border: '0.8px solid rgba(0, 0, 0, 0.35)',
-                      pointerEvents: 'none'
-                    }} />
-                    <input
-                      type="range" min={0} max={100} value={val}
-                      onChange={e => updateEQBand(idx, +e.target.value)}
-                      style={{
-                        position: 'absolute', top: 0, bottom: 0, left: '-8px',
-                        width: '20px', height: '100%', opacity: 0, cursor: 'row-resize',
-                        WebkitAppearance: 'slider-vertical'
-                      }}
-                    />
-                  </div>
-                  
-                  <span style={{ fontSize: '9px', color: gain > 0 ? 'var(--accent2)' : gain < 0 ? '#ff5a5a' : 'var(--text-dim)', scale: '0.85', fontWeight: 700 }}>
-                    {gain > 0 ? `+${gain.toFixed(0)}` : gain.toFixed(0)}
+        {!isLyricsExpanded && (
+          <div style={{ position: 'relative' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <span style={{ fontSize: '12.5px', color: 'var(--text-dim)', fontWeight: 600 }}>10-Band EQ RTA</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginRight: '4px' }}>
+                  <span style={{ fontSize: '10px', fontWeight: 800, color: isAnalyzingEq ? 'var(--accent)' : 'var(--text-dim)', letterSpacing: '0.3px' }}>
+                    {isAnalyzingEq ? 'Analyzing...' : 'AI EQ'}
                   </span>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* EQ & Sound Presets combined */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <div style={{ fontSize: 12.5, color: 'var(--text-dim)', fontWeight: 600, display: 'flex', justifyContent: 'space-between' }}>
-            <span>EQ & Tuning Presets</span>
-            <span style={{ fontSize: '10px', color: 'var(--accent)' }}>ALL ACTIVE</span>
-          </div>
-          <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '8px',
-            background: 'rgba(0,0,0,0.25)',
-            padding: '8px',
-            borderRadius: '10px',
-            border: '1px solid var(--panel-border)'
-          }}>
-            {presetCategories.map(cat => {
-              if (cat.list.length === 0) return null
-              return (
-                <div key={cat.title} style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                  <div style={{ fontSize: '9.5px', color: 'var(--text-dim)', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '0.5px' }}>
-                    {cat.title === 'Standard Reference' && '🎚️ '}
-                    {cat.title === 'Genre & Vibes' && '🎵 '}
-                    {cat.title === 'Special & Acoustic' && '🍃 '}
-                    {cat.title === 'Custom Tuned Presets' && '⚙️ '}
-                    {cat.title}
-                  </div>
-                  <div style={{ display: 'flex', gap: '4px', overflowX: 'auto', paddingBottom: '2px', scrollbarWidth: 'none' }} className="no-scrollbar">
-                    {cat.list.map(name => (
-                      <button key={name} className={`preset-btn ${activePreset === name ? 'active' : ''}`}
-                        onClick={() => applyPreset(name)}
-                        style={{
-                          fontSize: '10.5px',
-                          padding: '4px 8px',
-                          textTransform: 'uppercase',
-                          whiteSpace: 'nowrap',
-                          flexShrink: 0
-                        }}>
-                        {name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* Spatial DSP Audio FX knobs */}
-        <div style={{ background: 'rgba(255,255,255,0.02)', padding: '10px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.03)' }}>
-          <div style={{ fontSize: 12.5, color: 'var(--text-dim)', fontWeight: 600, marginBottom: 8 }}>Spatial Sound Effects</div>
-          
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {/* Reverb and Echo Levels side by side */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, marginBottom: 2 }}>
-                  <span>Reverb Level</span>
-                  <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{reverbLevel}%</span>
-                </div>
-                <input
-                  type="range" min={0} max={100} value={reverbLevel}
-                  onChange={e => updateReverb(+e.target.value, reverbPreset)}
-                  className="premium-slider"
-                />
-              </div>
-
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, marginBottom: 2 }}>
-                  <span>Echo Level</span>
-                  <span style={{ color: 'var(--accent2)', fontWeight: 700 }}>{echoLevel}%</span>
-                </div>
-                <input
-                  type="range" min={0} max={100} value={echoLevel}
-                  onChange={e => setEchoLevel(+e.target.value)}
-                  className="premium-slider accent2"
-                />
-              </div>
-            </div>
-
-            {/* Bass Boost and Vocal Clarity side by side */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, marginBottom: 2 }}>
-                  <span style={{ whiteSpace: 'nowrap' }}>Bass Boost (80Hz)</span>
-                  <span style={{ color: 'var(--accent2)', fontWeight: 700 }}>+{((bassBoost / 100) * 15).toFixed(1)}dB</span>
-                </div>
-                <input
-                  type="range" min={0} max={100} value={bassBoost}
-                  onChange={e => setBassBoost(+e.target.value)}
-                  className="premium-slider accent2"
-                />
-              </div>
-
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, marginBottom: 2 }}>
-                  <span style={{ whiteSpace: 'nowrap' }}>Vocal Clarity</span>
-                  <span style={{ color: 'var(--accent)', fontWeight: 700 }}>+{((vocalClarity / 100) * 15).toFixed(1)}dB</span>
-                </div>
-                <input
-                  type="range" min={0} max={100} value={vocalClarity}
-                  onChange={e => setVocalClarity(+e.target.value)}
-                  className="premium-slider"
-                />
-              </div>
-            </div>
-
-            {/* Space Preset Selection & Loudness Toggle on the same row */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4, background: 'rgba(0,0,0,0.2)', padding: '6px 8px', borderRadius: 6, gap: '8px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: '10px', color: 'var(--text-dim)', fontWeight: 800, letterSpacing: '0.3px', whiteSpace: 'nowrap' }}>DSP SPACE:</span>
-                <select
-                  value={reverbPreset}
-                  onChange={e => updateReverb(reverbLevel, e.target.value as any)}
-                  style={{
-                    background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.1)',
-                    color: 'var(--text)', fontSize: '10.5px', padding: '2px 4px',
-                    borderRadius: '4px', outline: 'none', cursor: 'pointer', fontWeight: 700
-                  }}
-                >
-                  <option value="ROOM">ROOM</option>
-                  <option value="HALL">HALL</option>
-                  <option value="CATHEDRAL">CATHEDRAL</option>
-                  <option value="CONCERT">CONCERT HALL</option>
-                  <option value="STUDIO">STUDIO</option>
-                </select>
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--text-dim)', letterSpacing: '0.3px', whiteSpace: 'nowrap' }}>MR MODE</span>
                   <button
                     onClick={() => {
-                      setIsMrMode(!isMrMode)
-                      if (!isMrMode) speakResponse("보컬 제거 MR 모드를 활성화합니다.")
-                      else speakResponse("MR 모드를 해제합니다.")
+                      const nextVal = !isAiEqEnabled;
+                      setIsAiEqEnabled(nextVal);
+                      if (nextVal) {
+                        triggerAutoEq(track.src);
+                      }
+                      playMechanicalSound('button');
                     }}
                     style={{
-                      width: '32px', height: '16px', borderRadius: '10px',
-                      background: isMrMode ? '#ef4444' : 'rgba(255,255,255,0.1)',
+                      width: '28px', height: '14px', borderRadius: '10px',
+                      background: isAiEqEnabled ? 'var(--accent)' : 'rgba(255,255,255,0.1)',
                       position: 'relative', border: 'none', cursor: 'pointer', transition: 'background 0.3s',
                       flexShrink: 0
                     }}
+                    title="Toggle AI Equalizer Auto Optimization"
                   >
                     <div style={{
-                      width: '12px', height: '12px', borderRadius: '50%', background: '#fff',
-                      position: 'absolute', top: '2px', left: isMrMode ? '18px' : '2px', transition: 'left 0.3s'
+                      width: '10px', height: '10px', borderRadius: '50%', background: '#fff',
+                      position: 'absolute', top: '2px', left: isAiEqEnabled ? '16px' : '2px', transition: 'left 0.3s'
                     }} />
                   </button>
                 </div>
+                <button
+                  onClick={() => setShowSavePresetModal(true)}
+                  style={{ fontSize: '10px', color: 'var(--accent)', fontWeight: 800, background: 'rgba(255,255,255,0.04)', border: 'none', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer' }}
+                >
+                  Save Custom
+                </button>
+              </div>
+            </div>
+            
+            <div className="eq-10band-container" style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', background: 'rgba(0,0,0,0.35)', padding: '10px 6px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.05)', height: '100px' }}>
+              {/* RTA Canvas floating behind the inputs */}
+              <canvas ref={rtaCanvasRef} className="rta-canvas" />
 
+              {isAnalyzingEq && (
+                <div style={{
+                  position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                  background: 'rgba(0,0,0,0.7)', borderRadius: 10,
+                  display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center',
+                  zIndex: 10, gap: '6px'
+                }}>
+                  <svg width="20" height="20" viewBox="0 0 38 38" stroke="var(--accent)">
+                    <g fill="none" fillRule="evenodd">
+                      <g transform="translate(1 1)" strokeWidth="3">
+                        <circle strokeOpacity=".25" cx="18" cy="18" r="18"/>
+                        <path d="M36 18c0-9.94-8.06-18-18-18">
+                          <animateTransform
+                            attributeName="transform"
+                            type="rotate"
+                            from="0 18 18"
+                            to="360 18 18"
+                            dur="0.8s"
+                            repeatCount="indefinite"
+                          />
+                        </path>
+                      </g>
+                    </g>
+                  </svg>
+                  <span style={{ fontSize: '9px', fontWeight: 800, color: 'var(--accent)', letterSpacing: '0.5px' }}>ANALYZING SPECTRUM...</span>
+                </div>
+              )}
+
+              {EQ_FREQS.map((freq, idx) => {
+                const val = eqGains[idx] ?? 50
+                const gain = sliderToGain(val)
+                const displayFreq = freq >= 1000 ? `${freq/1000}k` : freq
+                return (
+                  <div key={freq} className="eq-col-inner" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, height: '100%', position: 'relative' }}>
+                    <span style={{ fontSize: '9.5px', color: 'var(--text-dim)', scale: '0.85', marginBottom: 2 }}>{displayFreq}</span>
+                    
+                    <div style={{ flex: 1, width: '3.5px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', position: 'relative', margin: '4px 0' }}>
+                      <div style={{
+                        position: 'absolute', bottom: 0, left: 0, right: 0,
+                        height: `${val}%`,
+                        background: gain > 0 ? 'var(--accent2)' : gain < 0 ? '#ff5a5a' : 'var(--accent)',
+                        borderRadius: '2px', opacity: 0.8
+                      }} />
+                      <div style={{
+                        position: 'absolute', left: '50%', bottom: `calc(${val}% - 5px)`,
+                        transform: 'translateX(-50%)',
+                        width: '11px', height: '11px', borderRadius: '50%',
+                        background: 'conic-gradient(from 0deg, #f2f2f2 0deg, #c5c5c5 25deg, #a3a3a3 50deg, #e8e8e8 90deg, #999999 125deg, #fcfcfc 150deg, #7a7a7a 180deg, #c0c0c0 210deg, #8f8f8f 240deg, #e5e5e5 270deg, #b0b0b0 300deg, #ffffff 330deg, #f2f2f2 360deg)',
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.6), inset 0 0.8px 0.8px rgba(255,255,255,0.85), inset 0 -0.8px 0.8px rgba(0,0,0,0.25)',
+                        border: '0.8px solid rgba(0, 0, 0, 0.35)',
+                        pointerEvents: 'none'
+                      }} />
+                      <input
+                        type="range" min={0} max={100} value={val}
+                        onChange={e => updateEQBand(idx, +e.target.value)}
+                        style={{
+                          position: 'absolute', top: 0, bottom: 0, left: '-8px',
+                          width: '20px', height: '100%', opacity: 0, cursor: 'row-resize',
+                          WebkitAppearance: 'slider-vertical'
+                        }}
+                      />
+                    </div>
+                    
+                    <span style={{ fontSize: '9px', color: gain > 0 ? 'var(--accent2)' : gain < 0 ? '#ff5a5a' : 'var(--text-dim)', scale: '0.85', fontWeight: 700 }}>
+                      {gain > 0 ? `+${gain.toFixed(0)}` : gain.toFixed(0)}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* EQ & Sound Presets combined */}
+        {!isLyricsExpanded && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ fontSize: 12.5, color: 'var(--text-dim)', fontWeight: 600, display: 'flex', justifyContent: 'space-between' }}>
+              <span>EQ & Tuning Presets</span>
+              <span style={{ fontSize: '10px', color: 'var(--accent)' }}>ALL ACTIVE</span>
+            </div>
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px',
+              background: 'rgba(0,0,0,0.25)',
+              padding: '8px',
+              borderRadius: '10px',
+              border: '1px solid var(--panel-border)'
+            }}>
+              {presetCategories.map(cat => {
+                if (cat.list.length === 0) return null
+                return (
+                  <div key={cat.title} style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                    <div style={{ fontSize: '9.5px', color: 'var(--text-dim)', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '0.5px' }}>
+                      {cat.title === 'Standard Reference' && '🎚️ '}
+                      {cat.title === 'Genre & Vibes' && '🎵 '}
+                      {cat.title === 'Special & Acoustic' && '🍃 '}
+                      {cat.title === 'Custom Tuned Presets' && '⚙️ '}
+                      {cat.title}
+                    </div>
+                    <div style={{ display: 'flex', gap: '4px', overflowX: 'auto', paddingBottom: '2px', scrollbarWidth: 'none' }} className="no-scrollbar">
+                      {cat.list.map(name => {
+                        const isActive = !isAiEqEnabled && activePreset === name;
+                        return (
+                          <button key={name} className={`preset-btn ${isActive ? 'active' : ''}`}
+                            onClick={() => applyPreset(name)}
+                            disabled={isAiEqEnabled}
+                            style={{
+                              fontSize: '10.5px',
+                              padding: '4px 8px',
+                              textTransform: 'uppercase',
+                              whiteSpace: 'nowrap',
+                              flexShrink: 0,
+                              opacity: isAiEqEnabled ? 0.35 : 1,
+                              cursor: isAiEqEnabled ? 'not-allowed' : 'pointer'
+                            }}>
+                            {name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Spatial DSP Audio FX knobs */}
+        {!isLyricsExpanded && (
+          <div style={{ background: 'rgba(255,255,255,0.02)', padding: '10px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.03)' }}>
+            <div style={{ fontSize: 12.5, color: 'var(--text-dim)', fontWeight: 600, marginBottom: 8 }}>Spatial Sound Effects</div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {/* Reverb and Echo Levels side by side */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, marginBottom: 2 }}>
+                    <span>Reverb Level</span>
+                    <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{reverbLevel}%</span>
+                  </div>
+                  <input
+                    type="range" min={0} max={100} value={reverbLevel}
+                    onChange={e => updateReverb(+e.target.value, reverbPreset)}
+                    className="premium-slider"
+                  />
+                </div>
+
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, marginBottom: 2 }}>
+                    <span>Echo Level</span>
+                    <span style={{ color: 'var(--accent2)', fontWeight: 700 }}>{echoLevel}%</span>
+                  </div>
+                  <input
+                    type="range" min={0} max={100} value={echoLevel}
+                    onChange={e => setEchoLevel(+e.target.value)}
+                    className="premium-slider accent2"
+                  />
+                </div>
+              </div>
+
+              {/* Bass Boost and Vocal Clarity side by side */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, marginBottom: 2 }}>
+                    <span style={{ whiteSpace: 'nowrap' }}>Bass Boost (80Hz)</span>
+                    <span style={{ color: 'var(--accent2)', fontWeight: 700 }}>+{((bassBoost / 100) * 15).toFixed(1)}dB</span>
+                  </div>
+                  <input
+                    type="range" min={0} max={100} value={bassBoost}
+                    onChange={e => setBassBoost(+e.target.value)}
+                    className="premium-slider accent2"
+                  />
+                </div>
+
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, marginBottom: 2 }}>
+                    <span style={{ whiteSpace: 'nowrap' }}>Vocal Clarity</span>
+                    <span style={{ color: 'var(--accent)', fontWeight: 700 }}>+{((vocalClarity / 100) * 15).toFixed(1)}dB</span>
+                  </div>
+                  <input
+                    type="range" min={0} max={100} value={vocalClarity}
+                    onChange={e => setVocalClarity(+e.target.value)}
+                    className="premium-slider"
+                  />
+                </div>
+              </div>
+
+              {/* Space Preset Selection & Loudness Toggle on the same row */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4, background: 'rgba(0,0,0,0.2)', padding: '6px 8px', borderRadius: 6, gap: '8px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--text-dim)', letterSpacing: '0.3px', whiteSpace: 'nowrap' }}>3D LOUDNESS</span>
-                  <button
-                    onClick={() => setLoudness(!loudness)}
+                  <span style={{ fontSize: '10px', color: 'var(--text-dim)', fontWeight: 800, letterSpacing: '0.3px', whiteSpace: 'nowrap' }}>DSP SPACE:</span>
+                  <select
+                    value={reverbPreset}
+                    onChange={e => updateReverb(reverbLevel, e.target.value as any)}
                     style={{
-                      width: '32px', height: '16px', borderRadius: '10px',
-                      background: loudness ? 'var(--accent)' : 'rgba(255,255,255,0.1)',
-                      position: 'relative', border: 'none', cursor: 'pointer', transition: 'background 0.3s',
-                      flexShrink: 0
+                      background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.1)',
+                      color: 'var(--text)', fontSize: '10.5px', padding: '2px 4px',
+                      borderRadius: '4px', outline: 'none', cursor: 'pointer', fontWeight: 700
                     }}
                   >
-                    <div style={{
-                      width: '12px', height: '12px', borderRadius: '50%', background: '#fff',
-                      position: 'absolute', top: '2px', left: loudness ? '18px' : '2px', transition: 'left 0.3s'
-                    }} />
-                  </button>
+                    <option value="ROOM">ROOM</option>
+                    <option value="HALL">HALL</option>
+                    <option value="CATHEDRAL">CATHEDRAL</option>
+                    <option value="CONCERT">CONCERT HALL</option>
+                    <option value="STUDIO">STUDIO</option>
+                  </select>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--text-dim)', letterSpacing: '0.3px', whiteSpace: 'nowrap' }}>MR MODE</span>
+                    <button
+                      onClick={() => {
+                        setIsMrMode(!isMrMode)
+                        if (!isMrMode) speakResponse("보컬 제거 MR 모드를 활성화합니다.")
+                        else speakResponse("MR 모드를 해제합니다.")
+                      }}
+                      style={{
+                        width: '32px', height: '16px', borderRadius: '10px',
+                        background: isMrMode ? '#ef4444' : 'rgba(255,255,255,0.1)',
+                        position: 'relative', border: 'none', cursor: 'pointer', transition: 'background 0.3s',
+                        flexShrink: 0
+                      }}
+                    >
+                      <div style={{
+                        width: '12px', height: '12px', borderRadius: '50%', background: '#fff',
+                        position: 'absolute', top: '2px', left: isMrMode ? '18px' : '2px', transition: 'left 0.3s'
+                      }} />
+                    </button>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--text-dim)', letterSpacing: '0.3px', whiteSpace: 'nowrap' }}>3D LOUDNESS</span>
+                    <button
+                      onClick={() => setLoudness(!loudness)}
+                      style={{
+                        width: '32px', height: '16px', borderRadius: '10px',
+                        background: loudness ? 'var(--accent)' : 'rgba(255,255,255,0.1)',
+                        position: 'relative', border: 'none', cursor: 'pointer', transition: 'background 0.3s',
+                        flexShrink: 0
+                      }}
+                    >
+                      <div style={{
+                        width: '12px', height: '12px', borderRadius: '50%', background: '#fff',
+                        position: 'absolute', top: '2px', left: loudness ? '18px' : '2px', transition: 'left 0.3s'
+                      }} />
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Live Karaoke Synced Scrolling Lyrics with AI Generator */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1, minHeight: '110px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flex: 1, minHeight: isLyricsExpanded ? '200px' : '110px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span style={{ fontSize: 12.5, color: 'var(--text-dim)', fontWeight: 600 }}>Live Karaoke Synced Lyrics</span>
@@ -3733,6 +4468,22 @@ export default function Home() {
                 title={isTtsNarratorEnabled ? "Mute AI Lyric Narration" : "Enable AI Lyric Voice Narration"}
               >
                 {isTtsNarratorEnabled ? <Volume2 size={11} /> : <VolumeX size={11} />}
+              </button>
+              <button
+                onClick={() => {
+                  setIsLyricsExpanded(!isLyricsExpanded)
+                  playMechanicalSound('button')
+                }}
+                style={{
+                  background: 'rgba(255,255,255,0.05)', border: 'none', cursor: 'pointer',
+                  color: isLyricsExpanded ? 'var(--accent)' : 'rgba(255,255,255,0.3)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: '20px', height: '20px', borderRadius: '4px', padding: 0,
+                  transition: 'all 0.2s'
+                }}
+                title={isLyricsExpanded ? "Collapse Lyrics Panel" : "Expand Lyrics Panel"}
+              >
+                {isLyricsExpanded ? <Minimize2 size={11} /> : <Maximize2 size={11} />}
               </button>
             </div>
             <button
@@ -3779,7 +4530,7 @@ export default function Home() {
               </div>
             </div>
           ) : track.lyrics && track.lyrics.length > 0 ? (
-            <div ref={lyricsContainerRef} className="lyrics-scroller" style={{ flex: 1, height: '160px', maxHeight: '160px' }}>
+            <div ref={lyricsContainerRef} className="lyrics-scroller" style={{ flex: 1, minHeight: 0, height: 'auto', maxHeight: 'none' }}>
               {parsedLyrics.map((item, i) => {
                 const activeBlockIndex = Math.floor(activeLyricIndex / 3);
                 const currentBlockIndex = Math.floor(i / 3);
@@ -3793,8 +4544,10 @@ export default function Home() {
                 return (
                   <div
                     key={i}
-                    className={`lyrics-line ${isCurrentBlock ? 'active-block' : ''}`}
-                    style={isCurrentLine ? { textShadow: `0 0 ${textGlow}px rgba(255,255,255,0.8)` } : undefined}
+                    className={`lyrics-line ${isCurrentLine ? 'active' : isCurrentBlock ? 'active-block' : ''}`}
+                    style={isCurrentLine ? { 
+                      textShadow: `0 0 4px #fff, 0 0 ${10 + textGlow}px rgba(var(--accent-rgb), 0.95), 0 0 ${20 + textGlow * 1.5}px rgba(var(--accent-rgb), 0.5)` 
+                    } : undefined}
                   >
                     <span style={{ flex: 1, textAlign: 'center' }}>{item.text}</span>
                     <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.15)', width: '30px', textAlign: 'right', fontFamily: 'monospace' }}>
@@ -3805,7 +4558,7 @@ export default function Home() {
               })}
             </div>
           ) : (
-            <div className="lyrics-scroller" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '14px', background: 'rgba(0,0,0,0.25)', border: '1px dashed var(--panel-border)', borderRadius: '12px', flex: 1, height: '160px', maxHeight: '160px' }}>
+            <div className="lyrics-scroller" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '14px', background: 'rgba(0,0,0,0.25)', border: '1px dashed var(--panel-border)', borderRadius: '12px', flex: 1, minHeight: 0, height: 'auto', maxHeight: 'none' }}>
               <Sparkles size={20} style={{ color: 'var(--accent)', marginBottom: 8, opacity: 0.6 }} />
               <span style={{ fontSize: '13px', color: 'var(--text-dim)', fontWeight: 600, lineHeight: 1.5 }}>
                 곡의 AI 보컬 분석 대기 중<br/>
@@ -3819,6 +4572,7 @@ export default function Home() {
       {/* Hidden audio element */}
       <audio
         ref={audioRef}
+        crossOrigin="anonymous"
         onTimeUpdate={e => setTime(e.currentTarget.currentTime)}
         onEnded={() => { if (repeat) { audioRef.current!.currentTime = 0; play() } else skipNext() }}
       />
@@ -3909,6 +4663,24 @@ export default function Home() {
                       }}
                     />
                   </label>
+                  <button
+                    onClick={generateDalleCover}
+                    disabled={isGeneratingCover}
+                    style={{ 
+                      marginLeft: '8px', 
+                      fontSize: '10px', 
+                      padding: '6px 12px', 
+                      cursor: isGeneratingCover ? 'wait' : 'pointer', 
+                      textAlign: 'center', 
+                      background: 'var(--accent)', 
+                      color: '#000', 
+                      border: 'none', 
+                      borderRadius: '6px', 
+                      fontWeight: 700 
+                    }}
+                  >
+                    {isGeneratingCover ? '✨ Generating...' : '✨ AI Generate (DALL-E)'}
+                  </button>
                   <span style={{ fontSize: '9px', color: 'var(--text-dim)', marginLeft: '10px' }}>or edit URL below</span>
                 </div>
               </div>
@@ -3934,5 +4706,29 @@ export default function Home() {
         </div>
       )}
     </div>
+    </div>
+    
+    {/* Fullscreen Vertical FFT Glow Visualizers */}
+    <canvas 
+      ref={leftVisRef} 
+      className="fullscreen-vis-left"
+      style={{ 
+        display: isFullscreen ? 'block' : 'none',
+        filter: 'blur(65px)',
+        mixBlendMode: 'screen',
+        opacity: 0.85
+      }}
+    />
+    <canvas 
+      ref={rightVisRef} 
+      className="fullscreen-vis-right"
+      style={{ 
+        display: isFullscreen ? 'block' : 'none',
+        filter: 'blur(65px)',
+        mixBlendMode: 'screen',
+        opacity: 0.85
+      }}
+    />
+    </>
   )
 }

@@ -1,0 +1,33 @@
+{
+  "id": 1,
+  "title": "BG-02",
+  "artist": "Unknown Artist",
+  "genre": "Indie",
+  "mood": [
+    "#Discovered"
+  ],
+  "bpm": 100,
+  "key": "C Major",
+  "mediaPref": "LP",
+  "duration": 180,
+  "src": "/music/BG-02.mp3",
+  "lyrics": [
+    "[00:30.00] Thank you.",
+    "[01:30.00] Thank you very much.",
+    "[02:30.00] You"
+  ],
+  "linerNotes": "An imported offline track loaded directly into the AI Jukebox context.",
+  "coverUrl": "/api/cover?file=BG-02.mp3",
+  "eq": [
+    75,
+    59,
+    25,
+    25,
+    25,
+    28,
+    50,
+    58,
+    70,
+    75
+  ]
+}

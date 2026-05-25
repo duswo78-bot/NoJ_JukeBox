@@ -34,9 +34,14 @@ export async function GET() {
     }
 
     const files = await fs.readdir(musicDir);
-    const mp3Files = files.filter(f => f.toLowerCase().endsWith('.mp3'));
+    const audioFiles = files.filter(f => {
+      const ext = path.extname(f).toLowerCase();
+      const isAudio = ['.mp3', '.wav', '.ogg', '.flac', '.m4a'].includes(ext);
+      const isAiGenerated = f.endsWith('_mr.wav') || f.endsWith('_vocals.wav');
+      return isAudio && !isAiGenerated;
+    });
 
-    const tracks = await Promise.all(mp3Files.map(async (filename, index) => {
+    const tracks = await Promise.all(audioFiles.map(async (filename, index) => {
       const defaultMeta = getDefaultMetadata(filename, index);
       const ifxFilename = filename.replace(/\.[^/.]+$/, "") + '.ifx';
       const ifxPath = path.join(musicDir, ifxFilename);
@@ -56,7 +61,7 @@ export async function GET() {
           ...parsed,
           coverUrl: coverUrl,
           id: index + 1, // ensure ID is unique and strictly sequential
-          src: `/music/${filename}`, // ensure src always points to the mp3 correctly
+          src: `/music/${filename}`, // ensure src always points to the audio file correctly
         };
       } catch (err) {
         // .ifx file doesn't exist or is invalid, return default
